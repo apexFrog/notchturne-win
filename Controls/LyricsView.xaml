@@ -1,0 +1,67 @@
+<UserControl x:Class="NotchturneWin.Controls.LyricsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent"
+             ClipToBounds="True">
+  <Grid>
+    <ScrollViewer x:Name="PlainScroll" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Visibility="Collapsed">
+      <TextBlock x:Name="PlainText" Foreground="#A0A0AA" FontSize="13" TextWrapping="Wrap"
+                 TextAlignment="Center" LineHeight="20" Padding="4,12"/>
+    </ScrollViewer>
+
+    <Grid x:Name="SyncedHost">
+      <!-- Scrollable Full-List Mode (when LockActiveLine is off) -->
+      <ScrollViewer x:Name="SyncedScroll"
+                    VerticalScrollBarVisibility="Hidden"
+                    HorizontalScrollBarVisibility="Disabled"
+                    PreviewMouseWheel="OnLyricsWheel"
+                    CanContentScroll="False"
+                    Visibility="Collapsed">
+        <StackPanel x:Name="LinesPanel"/>
+      </ScrollViewer>
+
+      <!-- Locked Dead-Center Mode: ActiveHost is NEVER masked and always dead-center -->
+      <Grid x:Name="LockedGrid" Visibility="Visible">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="*"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" ClipToBounds="True">
+          <Grid.OpacityMask>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+              <GradientStop Color="#00000000" Offset="0.0"/>
+              <GradientStop Color="#FF000000" Offset="0.48"/>
+              <GradientStop Color="#FF000000" Offset="1.0"/>
+            </LinearGradientBrush>
+          </Grid.OpacityMask>
+          <ScrollViewer x:Name="PastScroll" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"
+                        IsHitTestVisible="False" VerticalContentAlignment="Bottom">
+            <StackPanel x:Name="PastPanel" VerticalAlignment="Bottom"/>
+          </ScrollViewer>
+        </Grid>
+
+        <ContentPresenter x:Name="ActiveHost" Grid.Row="1" VerticalAlignment="Center"/>
+
+        <Grid Grid.Row="2" ClipToBounds="True">
+          <Grid.OpacityMask>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+              <GradientStop Color="#FF000000" Offset="0.0"/>
+              <GradientStop Color="#FF000000" Offset="0.52"/>
+              <GradientStop Color="#00000000" Offset="1.0"/>
+            </LinearGradientBrush>
+          </Grid.OpacityMask>
+          <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"
+                        IsHitTestVisible="False" VerticalContentAlignment="Top">
+            <StackPanel x:Name="FuturePanel" VerticalAlignment="Top"/>
+          </ScrollViewer>
+        </Grid>
+      </Grid>
+    </Grid>
+
+    <TextBlock x:Name="StatusText" Foreground="#6E6E76" FontSize="13"
+               HorizontalAlignment="Center" VerticalAlignment="Center"
+               TextAlignment="Center" TextWrapping="Wrap" Visibility="Visible"/>
+  </Grid>
+</UserControl>

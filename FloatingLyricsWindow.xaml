@@ -1,0 +1,12 @@
+<Window x:Class="NotchturneWin.FloatingLyricsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:NotchturneWin.Controls"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
+        Width="760" Height="150">
+  <Border x:Name="PillBorder" CornerRadius="16" Padding="24,10" Background="#00000000"
+          MouseLeftButtonDown="OnDragStart">
+    <controls:LyricsView x:Name="Lyrics" VerticalAlignment="Center"/>
+  </Border>
+</Window>
