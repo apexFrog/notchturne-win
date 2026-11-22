@@ -278,7 +278,7 @@ public partial class MainWindow : Window
         if (_open)
         {
             _cornerTgtW = 580;
-            _cornerTgtH = _lyricsColumnVisible ? 456 : 168;
+            _cornerTgtH = HasAnySideBottomPanel() ? 456 : 168;
             _cornerTgtArmW = 248;
             _cornerTgtArmH = 164;
         }
@@ -386,7 +386,6 @@ public partial class MainWindow : Window
         CornerMiniVert.Height = Math.Max(40, vertH);
         Canvas.SetLeft(CornerMiniVert, vertLeft);
         Canvas.SetTop(CornerMiniVert, vertTop);
-        CornerMiniProg.InvertDirection = flipY;
 
         // Position expanded content inside the arms
         CornerFullHoriz.Width = w;
@@ -431,9 +430,11 @@ public partial class MainWindow : Window
             CornerMiniJunction.Opacity = _open ? 0 : 1;
             CornerMiniVert.Opacity = _open ? 0 : 1;
             CornerFullHoriz.Opacity = _open ? 1 : 0;
-            CornerFullVert.Opacity = (_open && _lyricsColumnVisible) ? 1 : 0;
+            bool hasVertPanel = HasAnySideBottomPanel();
+            CornerFullVert.Opacity = (_open && hasVertPanel) ? 1 : 0;
             CornerFullHoriz.IsHitTestVisible = _open;
-            CornerFullVert.IsHitTestVisible = _open && _lyricsColumnVisible;
+            CornerFullVert.IsHitTestVisible = _open && hasVertPanel;
+            UpdateSideBottomTabs();
             return;
         }
 
@@ -506,6 +507,20 @@ public partial class MainWindow : Window
         SideLyrics.Visibility = _sideTab == 0 ? Visibility.Visible : Visibility.Collapsed;
         SideCalendarPanel.Visibility = _sideTab == 1 ? Visibility.Visible : Visibility.Collapsed;
         SideClipboardPanel.Visibility = _sideTab == 2 ? Visibility.Visible : Visibility.Collapsed;
+
+        // Sync Corner L-mode vertical wing tabs as well
+        CornerTabRow.Visibility = count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        BtnCornerTabLyrics.Visibility = hasLyrics ? Visibility.Visible : Visibility.Collapsed;
+        BtnCornerTabCal.Visibility = hasCal ? Visibility.Visible : Visibility.Collapsed;
+        BtnCornerTabClip.Visibility = hasClip ? Visibility.Visible : Visibility.Collapsed;
+
+        SetPill(BtnCornerTabLyrics, _sideTab == 0);
+        SetPill(BtnCornerTabCal, _sideTab == 1);
+        SetPill(BtnCornerTabClip, _sideTab == 2);
+
+        CornerLyrics.Visibility = _sideTab == 0 ? Visibility.Visible : Visibility.Collapsed;
+        CornerCalendarPanel.Visibility = _sideTab == 1 ? Visibility.Visible : Visibility.Collapsed;
+        CornerClipboardPanel.Visibility = _sideTab == 2 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnSideTabLyrics(object s, RoutedEventArgs e) { _sideTab = 0; UpdateSideBottomTabs(); UpdateLyricsPosition(force: true); }
@@ -623,8 +638,10 @@ public partial class MainWindow : Window
         CornerMiniViz.AccentColor = _coverAccentColor;
 
         SideProgInd.StyleMode = _settings.SideProgressStyle;
+        SideProgInd.InvertDirection = _settings.SideProgressBottomToTop;
         SideProgInd.AccentColor = _coverAccentColor;
         CornerMiniProg.StyleMode = _settings.SideProgressStyle;
+        CornerMiniProg.InvertDirection = _settings.SideProgressBottomToTop;
         CornerMiniProg.AccentColor = _coverAccentColor;
 
         UpdateMiniIndicatorVisibility(_media.IsPlaying);
@@ -722,6 +739,9 @@ public partial class MainWindow : Window
         BtnProgDots.Content = en ? "Dots" : "Точки";
         BtnProgTime.Content = en ? "Timer" : "Таймер";
         BtnProgCapsule.Content = en ? "Capsule" : "Капсула";
+        LblSideProgDir.Text = en ? "Timer direction" : "Направление таймера";
+        BtnProgDirUp.Content = en ? "Bottom to top" : "Снизу вверх";
+        BtnProgDirDown.Content = en ? "Top to bottom" : "Сверху вниз";
         LblCornerWrap.Text = en ? "Corner wrap L-mode (Beta)" : "Угловой перегиб (Бета)";
         LblNotchPos.Text = en ? "Notch position" : "Позиция острова";
         BtnResetPos.Content = en ? "Top center" : "Вверх по центру";
@@ -729,6 +749,9 @@ public partial class MainWindow : Window
         BtnSideTabLyrics.Content = en ? "Lyrics" : "Текст";
         BtnSideTabCal.Content = en ? "Calendar" : "Календарь";
         BtnSideTabClip.Content = en ? "Clipboard" : "Буфер";
+        BtnCornerTabLyrics.Content = BtnSideTabLyrics.Content;
+        BtnCornerTabCal.Content = BtnSideTabCal.Content;
+        BtnCornerTabClip.Content = BtnSideTabClip.Content;
 
         LblViz.Text = en ? "Visualizer" : "Визуализатор";
         BtnVizBars.Content = en ? "Bars" : "Столбики";
@@ -800,6 +823,8 @@ public partial class MainWindow : Window
         SetPill(BtnProgDots, _settings.SideProgressStyle == SideProgressStyle.Dots);
         SetPill(BtnProgTime, _settings.SideProgressStyle == SideProgressStyle.Time);
         SetPill(BtnProgCapsule, _settings.SideProgressStyle == SideProgressStyle.Capsule);
+        SetPill(BtnProgDirUp, _settings.SideProgressBottomToTop);
+        SetPill(BtnProgDirDown, !_settings.SideProgressBottomToTop);
 
         ShimmerStyleRow.Visibility = _settings.CoverShimmerEnabled ? Visibility.Visible : Visibility.Collapsed;
         ShimmerStyleSep.Visibility = _settings.CoverShimmerEnabled ? Visibility.Visible : Visibility.Collapsed;
@@ -988,6 +1013,8 @@ public partial class MainWindow : Window
     private void OnProgDots(object s, RoutedEventArgs e) { _settings.SideProgressStyle = SideProgressStyle.Dots; SaveAndApply(); }
     private void OnProgTime(object s, RoutedEventArgs e) { _settings.SideProgressStyle = SideProgressStyle.Time; SaveAndApply(); }
     private void OnProgCapsule(object s, RoutedEventArgs e) { _settings.SideProgressStyle = SideProgressStyle.Capsule; SaveAndApply(); }
+    private void OnProgDirUp(object s, RoutedEventArgs e) { _settings.SideProgressBottomToTop = true; SaveAndApply(); }
+    private void OnProgDirDown(object s, RoutedEventArgs e) { _settings.SideProgressBottomToTop = false; SaveAndApply(); }
 
     private void ResetNotchPosition(object sender, RoutedEventArgs e)
     {
@@ -1758,7 +1785,7 @@ public partial class MainWindow : Window
         {
             ApplyCornerGeometry();
             var fadeVert = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(320)) { EasingFunction = SilkyEase };
-            if (_open && _lyricsColumnVisible) CornerFullVert.BeginAnimation(OpacityProperty, fadeVert);
+            if (_open && HasAnySideBottomPanel()) CornerFullVert.BeginAnimation(OpacityProperty, fadeVert);
             else if (!_open) CornerMiniVert.BeginAnimation(OpacityProperty, fadeVert);
         }
 
@@ -1934,13 +1961,14 @@ public partial class MainWindow : Window
 
         if (IsCornerMode)
         {
+            bool showVert = expand && HasAnySideBottomPanel();
             CornerFullHoriz.BeginAnimation(OpacityProperty, fullOp);
-            CornerFullVert.BeginAnimation(OpacityProperty, new DoubleAnimation(expand && _lyricsColumnVisible ? 1 : 0, TimeSpan.FromMilliseconds(expand ? 280 : 150)) { EasingFunction = SilkyEase });
+            CornerFullVert.BeginAnimation(OpacityProperty, new DoubleAnimation(showVert ? 1 : 0, TimeSpan.FromMilliseconds(expand ? 280 : 150)) { EasingFunction = SilkyEase });
             CornerMiniHoriz.BeginAnimation(OpacityProperty, miniOp);
             CornerMiniJunction.BeginAnimation(OpacityProperty, miniOp);
             CornerMiniVert.BeginAnimation(OpacityProperty, miniOp);
             CornerFullHoriz.IsHitTestVisible = expand;
-            CornerFullVert.IsHitTestVisible = expand && _lyricsColumnVisible;
+            CornerFullVert.IsHitTestVisible = showVert;
             return;
         }
 
@@ -2211,8 +2239,9 @@ public partial class MainWindow : Window
             if (IsCornerMode && !_inSettings)
             {
                 UpdateCornerTargets(snapImmediate: false);
-                CornerFullVert.Opacity = (_open && _lyricsColumnVisible) ? 1 : 0;
-                CornerFullVert.IsHitTestVisible = _open && _lyricsColumnVisible;
+                bool showVert = _open && HasAnySideBottomPanel();
+                CornerFullVert.Opacity = showVert ? 1 : 0;
+                CornerFullVert.IsHitTestVisible = showVert;
             }
             if (!_open && _settings.ShowLyrics && _settings.ShowLyricsInMiniNotch)
                 AnimateSize(false);
@@ -2368,6 +2397,7 @@ public partial class MainWindow : Window
         _calendarDate = today;
         PopulateCalendar(today, CalMonthTitle, CalWeekdaysGrid, CalDaysGrid);
         PopulateCalendar(today, SideCalMonthTitle, SideCalWeekdaysGrid, SideCalDaysGrid);
+        PopulateCalendar(today, CornerCalMonthTitle, CornerCalWeekdaysGrid, CornerCalDaysGrid);
     }
 
     private void PopulateCalendar(DateTime today, TextBlock monthTitle, System.Windows.Controls.Primitives.UniformGrid weekdaysGrid, System.Windows.Controls.Primitives.UniformGrid daysGrid)
@@ -2470,6 +2500,7 @@ public partial class MainWindow : Window
     {
         PopulateClipList(ClipList);
         PopulateClipList(SideClipList);
+        PopulateClipList(CornerClipList);
     }
 
     private void PopulateClipList(StackPanel targetList)

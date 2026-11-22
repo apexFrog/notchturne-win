@@ -100,7 +100,8 @@ public class AppSettings
     public bool AllowNotchDrag { get; set; } = true;
     public bool SideEdgeAutoExpand { get; set; } = true;
     public SideProgressStyle SideProgressStyle { get; set; } = SideProgressStyle.Ring;
-    public bool CornerWrapBetaEnabled { get; set; } = true;
+    public bool SideProgressBottomToTop { get; set; } = true;
+    public bool CornerWrapBetaEnabled { get; set; } = false;
 
     public bool UseAppleMusicHdCover { get; set; } = true;
     public bool IgnoreBrowsers { get; set; } = true;

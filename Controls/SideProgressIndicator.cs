@@ -16,7 +16,7 @@ public class SideProgressIndicator : FrameworkElement
     private string _remaining = "-0:00";
     private Color _accent = Color.FromRgb(110, 185, 255);
     private SideProgressStyle _styleMode = SideProgressStyle.Ring;
-    private bool _invertDirection;
+    private bool _invertDirection = true;
 
     private static readonly Typeface MonoFace = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
     private static readonly Typeface LightFace = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
@@ -224,14 +224,15 @@ public class SideProgressIndicator : FrameworkElement
         {
             var clip = new RectangleGeometry(new Rect(x + 1, y + 1, capW - 2, capH - 2), (capW - 2) / 2.0, (capW - 2) / 2.0);
             dc.PushClip(clip);
-            double fy = y + capH - 1 - fillH;
+            double fy = _invertDirection ? (y + capH - 1 - fillH) : (y + 1);
             var fillGrad = new LinearGradientBrush(
-                Color.FromArgb(235, 255, 255, 255),
-                Color.FromArgb(220, _accent.R, _accent.G, _accent.B),
+                _invertDirection ? Color.FromArgb(235, 255, 255, 255) : Color.FromArgb(220, _accent.R, _accent.G, _accent.B),
+                _invertDirection ? Color.FromArgb(220, _accent.R, _accent.G, _accent.B) : Color.FromArgb(235, 255, 255, 255),
                 90);
             dc.DrawRectangle(fillGrad, null, new Rect(x + 1, fy, capW - 2, fillH));
             // Bright meniscus highlight
-            dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(210, 255, 255, 255)), null, new Rect(x + 1, fy, capW - 2, 1.5));
+            double menY = _invertDirection ? fy : (fy + fillH - 1.5);
+            dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(210, 255, 255, 255)), null, new Rect(x + 1, menY, capW - 2, 1.5));
             dc.Pop();
         }
     }

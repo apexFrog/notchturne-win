@@ -582,6 +582,15 @@
             <Border Style="{StaticResource SettingSep}"/>
 
             <Grid>
+              <TextBlock x:Name="LblSideProgDir" Text="Направление таймера" Style="{StaticResource SettingRowLabel}"/>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnProgDirUp" Content="Снизу вверх" Style="{StaticResource SegPill}" Padding="9,4" Margin="0,0,4,0" Click="OnProgDirUp"/>
+                <Button x:Name="BtnProgDirDown" Content="Сверху вниз" Style="{StaticResource SegPill}" Padding="9,4" Click="OnProgDirDown"/>
+              </StackPanel>
+            </Grid>
+            <Border Style="{StaticResource SettingSep}"/>
+
+            <Grid>
               <TextBlock x:Name="LblCornerWrap" Text="Угловой перегиб (Бета)" Style="{StaticResource SettingRowLabel}"/>
               <CheckBox x:Name="SwCornerWrap" Style="{StaticResource IosSwitch}" HorizontalAlignment="Right" Click="OnInlineToggle"/>
             </Grid>
@@ -881,17 +890,41 @@
         </Grid>
       </Grid>
 
-      <!-- Expanded: Vertical Arm (Lyrics flowing down/up along the screen edge!) -->
+      <!-- Expanded: Vertical Arm (Lyrics / Calendar / Clipboard flowing along the screen edge!) -->
       <Grid x:Name="CornerFullVert" Width="244" Height="280" Opacity="0" IsHitTestVisible="False">
-        <Grid Margin="14,10,14,10">
+        <Grid Margin="12,10,12,10">
           <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
-          <Border x:Name="CornerLyricsDividerTop" Grid.Row="0" Height="1" Background="#24FFFFFF" Margin="4,0,4,10"/>
-          <controls:LyricsView x:Name="CornerLyrics" Grid.Row="1" VerticalAlignment="Stretch"/>
-          <Border x:Name="CornerLyricsDividerBot" Grid.Row="2" Height="1" Background="#24FFFFFF" Margin="4,10,4,0" Visibility="Collapsed"/>
+          <Border x:Name="CornerLyricsDividerTop" Grid.Row="0" Height="1" Background="#24FFFFFF" Margin="4,0,4,8"/>
+          <StackPanel x:Name="CornerTabRow" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,8" Visibility="Collapsed">
+            <Button x:Name="BtnCornerTabLyrics" Content="Текст" Style="{StaticResource SegPill}" Padding="8,3" Margin="0,0,4,0" Click="OnSideTabLyrics"/>
+            <Button x:Name="BtnCornerTabCal" Content="Календарь" Style="{StaticResource SegPill}" Padding="8,3" Margin="0,0,4,0" Click="OnSideTabCal"/>
+            <Button x:Name="BtnCornerTabClip" Content="Буфер" Style="{StaticResource SegPill}" Padding="8,3" Click="OnSideTabClip"/>
+          </StackPanel>
+          <Grid Grid.Row="2">
+            <controls:LyricsView x:Name="CornerLyrics" VerticalAlignment="Stretch"/>
+            <Grid x:Name="CornerCalendarPanel" VerticalAlignment="Center" Visibility="Collapsed" Margin="4,0">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <TextBlock x:Name="CornerCalMonthTitle" Text="NOVEMBER 2026" Foreground="#8E8E93" FontSize="10.5"
+                         FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,7"/>
+              <UniformGrid x:Name="CornerCalWeekdaysGrid" Grid.Row="1" Columns="7" Margin="0,0,0,5"/>
+              <UniformGrid x:Name="CornerCalDaysGrid" Grid.Row="2" Columns="7"/>
+            </Grid>
+            <Grid x:Name="CornerClipboardPanel" VerticalAlignment="Stretch" Visibility="Collapsed">
+              <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="CornerClipList"/>
+              </ScrollViewer>
+            </Grid>
+          </Grid>
+          <Border x:Name="CornerLyricsDividerBot" Grid.Row="3" Height="1" Background="#24FFFFFF" Margin="4,8,4,0" Visibility="Collapsed"/>
         </Grid>
       </Grid>
     </Canvas>
