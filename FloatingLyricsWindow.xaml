@@ -3,10 +3,16 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:NotchturneWin.Controls"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="Manual"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
-        Width="760" Height="150">
+        Width="780" Height="160">
   <Border x:Name="PillBorder" CornerRadius="16" Padding="24,10" Background="#00000000"
           MouseLeftButtonDown="OnDragStart">
-    <controls:LyricsView x:Name="Lyrics" VerticalAlignment="Center"/>
+    <Grid>
+      <controls:LyricsView x:Name="Lyrics" VerticalAlignment="Stretch"/>
+      <TextBlock x:Name="DragHint" Text="Перетащи мышкой · включи «Пропускать клики» чтобы закрепить"
+                 Foreground="#AAFFFFFF" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                 Margin="0,0,0,-2" Visibility="Collapsed" IsHitTestVisible="False"/>
+    </Grid>
   </Border>
 </Window>

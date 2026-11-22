@@ -4,7 +4,7 @@
         xmlns:controls="clr-namespace:NotchturneWin.Controls"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
-        Width="250" Height="34" Top="0">
+        Width="1060" Height="420" Top="0">
   <Window.Resources>
     <Style x:Key="IconBtn" TargetType="Button">
       <Setter Property="Background" Value="Transparent"/>
@@ -100,7 +100,9 @@
   </Window.Resources>
 
   <Border x:Name="NotchShell" Background="#FF000000" CornerRadius="0,0,26,26"
-          BorderBrush="#1AFFFFFF" BorderThickness="1,0,1,1">
+          BorderBrush="#1AFFFFFF" BorderThickness="1,0,1,1"
+          HorizontalAlignment="Center" VerticalAlignment="Top"
+          Width="250" Height="34" ClipToBounds="True">
     <Border.ContextMenu>
       <ContextMenu>
         <MenuItem x:Name="CtxSettings" Header="Настройки…" Click="OpenSettings"/>
@@ -130,12 +132,18 @@
           <TextBlock x:Name="MiniLyricText" Foreground="#B8B8C2" FontSize="11.5" FontWeight="Normal"
                      TextTrimming="CharacterEllipsis" Margin="0,1,0,0" Visibility="Collapsed"/>
         </StackPanel>
-        <Ellipse x:Name="MiniDot" Grid.Column="2" Width="6" Height="6" Fill="#1DB954" Margin="8,0,0,0"
-                 VerticalAlignment="Center" Visibility="Collapsed"/>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+          <controls:MiniVisualizer x:Name="MiniViz" Width="18" Height="16" VerticalAlignment="Center"/>
+          <Ellipse x:Name="MiniDot" Width="6" Height="6" Fill="#1DB954"
+                   VerticalAlignment="Center" Visibility="Collapsed"/>
+        </StackPanel>
       </Grid>
 
       <!-- Expanded Wide Notch (Player + Lyrics + Calendar + Clipboard) -->
-      <Grid x:Name="Full" Margin="20,16,20,16" Opacity="0" IsHitTestVisible="False">
+      <Grid x:Name="Full" Margin="20,16,20,16" Opacity="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0">
+        <Grid.RenderTransform>
+          <ScaleTransform x:Name="FullScale" ScaleX="0.97" ScaleY="0.97"/>
+        </Grid.RenderTransform>
         <!-- Settings Gear top-right -->
         <Button Style="{StaticResource IconBtn}" HorizontalAlignment="Right" VerticalAlignment="Top"
                 Margin="0,-8,-8,0" Padding="5" ToolTip="Настройки" Click="OpenSettings" Panel.ZIndex="10">
@@ -243,7 +251,12 @@
           <Border x:Name="DivLyrics" Grid.Column="1" Width="1" Background="#1E1E22" Margin="14,10,16,10"/>
 
           <!-- Column 2: Lyrics -->
-          <controls:LyricsView x:Name="NotchLyrics" Grid.Column="2" VerticalAlignment="Stretch" Margin="0,2,0,2"/>
+          <Grid Grid.Column="2" Margin="0,2,0,2">
+            <Grid.RenderTransform>
+              <TranslateTransform x:Name="LyricsSlide" X="0"/>
+            </Grid.RenderTransform>
+            <controls:LyricsView x:Name="NotchLyrics" VerticalAlignment="Stretch"/>
+          </Grid>
 
           <!-- Divider 2 -->
           <Border x:Name="DivCal" Grid.Column="3" Width="1" Background="#1E1E22" Margin="14,10,16,10"/>
@@ -343,6 +356,18 @@
                 <Button x:Name="BtnBgGlass" Content="Стекло" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnBgGlass"/>
                 <Button x:Name="BtnBgCoverGlass" Content="Обложка + Стекло" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnBgCoverGlass"/>
                 <Button x:Name="BtnBgCoverBlack" Content="Обложка + Чёрный" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnBgCoverBlack"/>
+              </WrapPanel>
+            </Grid>
+            <Border Style="{StaticResource SettingSep}"/>
+
+            <Grid>
+              <TextBlock x:Name="LblViz" Text="Визуализатор" Style="{StaticResource SettingRowLabel}"/>
+              <WrapPanel HorizontalAlignment="Right" MaxWidth="310">
+                <Button x:Name="BtnVizBars" Content="Столбики" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnVizBars"/>
+                <Button x:Name="BtnVizDashes" Content="Штрихи" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnVizDashes"/>
+                <Button x:Name="BtnVizWave" Content="Волна" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnVizWave"/>
+                <Button x:Name="BtnVizBlocks" Content="Блоки" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnVizBlocks"/>
+                <Button x:Name="BtnVizNone" Content="Выкл" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnVizNone"/>
               </WrapPanel>
             </Grid>
 

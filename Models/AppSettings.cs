@@ -42,6 +42,15 @@ public enum NotchBackgroundMode
     CoverBlack
 }
 
+public enum VisualizerStyle
+{
+    Bars,
+    Dashes,
+    Wave,
+    Blocks,
+    None
+}
+
 public class AppSettings
 {
     public bool ShowLyrics { get; set; } = true;
@@ -53,6 +62,7 @@ public class AppSettings
     public double LyricsOffsetSeconds { get; set; } = 0.2;
 
     public NotchBackgroundMode NotchBackground { get; set; } = NotchBackgroundMode.Black;
+    public VisualizerStyle VisualizerStyle { get; set; } = VisualizerStyle.Bars;
 
     public bool UseAppleMusicHdCover { get; set; } = true;
     public bool IgnoreBrowsers { get; set; } = true;

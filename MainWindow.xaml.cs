@@ -56,9 +56,12 @@ public partial class MainWindow : Window
     private bool _open;
     private bool _inSettings;
     private bool _syncingUi;
+    private bool _lyricsColumnVisible = false;
     private DateTime? _idleSince;
     private DateTime _calendarDate = DateTime.MinValue;
     private Color _coverAccentColor = Color.FromRgb(65, 75, 110);
+    private long _lastHoverCheckTicks;
+    private static readonly QuarticEase SilkyEase = new() { EasingMode = EasingMode.EaseOut };
 
     private bool IsEn => string.Equals(_settings.Language, "en", StringComparison.OrdinalIgnoreCase);
 
@@ -87,15 +90,18 @@ public partial class MainWindow : Window
         BuildCalendar(DateTime.Today);
         RebuildClips();
 
+        Width = Math.Min(1060, SystemParameters.PrimaryScreenWidth);
+        Height = 420;
         Center();
-        SizeChanged += (_, _) => Center();
 
         Loaded += async (_, _) => await _media.InitializeAsync();
-        Closed += (_, _) => _floatingWindow?.Close();
+        Closed += (_, _) =>
+        {
+            CompositionTarget.Rendering -= OnRenderFrame;
+            _floatingWindow?.Close();
+        };
 
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-        timer.Tick += Tick;
-        timer.Start();
+        CompositionTarget.Rendering += OnRenderFrame;
     }
 
     private void Center() => Left = (SystemParameters.PrimaryScreenWidth - Width) / 2;
@@ -135,11 +141,16 @@ public partial class MainWindow : Window
 
     private double GetCollapsedHeight() => IsMiniTwoLine() ? 52 : 34;
 
+    private bool WantNotchLyricsColumn() =>
+        _settings.ShowLyrics
+        && _settings.LyricsPlacement is LyricsPlacement.Notch or LyricsPlacement.NotchAndFloating
+        && _currentLyrics.Found;
+
     private double GetExpandedWidth()
     {
         if (_inSettings) return 540;
 
-        bool showLyrics = _settings.ShowLyrics && _settings.LyricsPlacement is LyricsPlacement.Notch or LyricsPlacement.NotchAndFloating;
+        bool showLyrics = _lyricsColumnVisible;
         bool showCal = _settings.ShowCalendar;
         bool showClip = _settings.ShowClipboard;
 
@@ -153,15 +164,86 @@ public partial class MainWindow : Window
 
     private double GetExpandedHeight() => _inSettings ? 390 : 212;
 
+    private void SetLyricsColumnVisible(bool visible, bool animate)
+    {
+        if (_lyricsColumnVisible == visible && animate) return;
+        _lyricsColumnVisible = visible;
+
+        if (visible)
+        {
+            ColLyrics.Width = new GridLength(230);
+            ColLyricsDiv.Width = GridLength.Auto;
+            DivLyrics.Visibility = Visibility.Visible;
+            NotchLyrics.Visibility = Visibility.Visible;
+
+            if (animate && _open && !_inSettings)
+            {
+                var d = TimeSpan.FromMilliseconds(360);
+                var slideIn = new DoubleAnimation(28, 0, d) { EasingFunction = SilkyEase };
+                var fadeIn = new DoubleAnimation(0, 1, d) { EasingFunction = SilkyEase };
+                var divFade = new DoubleAnimation(0, 1, d) { EasingFunction = SilkyEase };
+                Timeline.SetDesiredFrameRate(slideIn, 60);
+                Timeline.SetDesiredFrameRate(fadeIn, 60);
+                LyricsSlide.BeginAnimation(TranslateTransform.XProperty, slideIn);
+                NotchLyrics.BeginAnimation(OpacityProperty, fadeIn);
+                DivLyrics.BeginAnimation(OpacityProperty, divFade);
+            }
+            else
+            {
+                LyricsSlide.BeginAnimation(TranslateTransform.XProperty, null);
+                LyricsSlide.X = 0;
+                NotchLyrics.BeginAnimation(OpacityProperty, null);
+                NotchLyrics.Opacity = 1;
+                DivLyrics.BeginAnimation(OpacityProperty, null);
+                DivLyrics.Opacity = 1;
+            }
+
+            if (_open && !_inSettings) AnimateSize(true);
+        }
+        else
+        {
+            if (animate && _open && !_inSettings && NotchLyrics.Visibility == Visibility.Visible)
+            {
+                var d = TimeSpan.FromMilliseconds(260);
+                var slideOut = new DoubleAnimation(0, -24, d) { EasingFunction = SilkyEase };
+                var fadeOut = new DoubleAnimation(1, 0, d) { EasingFunction = SilkyEase };
+                var divFade = new DoubleAnimation(1, 0, d) { EasingFunction = SilkyEase };
+                Timeline.SetDesiredFrameRate(slideOut, 60);
+                Timeline.SetDesiredFrameRate(fadeOut, 60);
+
+                fadeOut.Completed += (_, _) =>
+                {
+                    if (_lyricsColumnVisible) return;
+                    ColLyrics.Width = new GridLength(0);
+                    ColLyricsDiv.Width = new GridLength(0);
+                    DivLyrics.Visibility = Visibility.Collapsed;
+                    NotchLyrics.Visibility = Visibility.Collapsed;
+                    if (_open && !_inSettings) AnimateSize(true);
+                };
+
+                LyricsSlide.BeginAnimation(TranslateTransform.XProperty, slideOut);
+                NotchLyrics.BeginAnimation(OpacityProperty, fadeOut);
+                DivLyrics.BeginAnimation(OpacityProperty, divFade);
+            }
+            else
+            {
+                ColLyrics.Width = new GridLength(0);
+                ColLyricsDiv.Width = new GridLength(0);
+                DivLyrics.Visibility = Visibility.Collapsed;
+                NotchLyrics.Visibility = Visibility.Collapsed;
+                LyricsSlide.BeginAnimation(TranslateTransform.XProperty, null);
+                LyricsSlide.X = 0;
+                NotchLyrics.BeginAnimation(OpacityProperty, null);
+                NotchLyrics.Opacity = 0;
+                if (_open && !_inSettings) AnimateSize(true);
+            }
+        }
+    }
+
     private void ApplySettings(bool initial = false)
     {
-        bool showNotchLyrics = _settings.ShowLyrics && _settings.LyricsPlacement is LyricsPlacement.Notch or LyricsPlacement.NotchAndFloating;
+        SetLyricsColumnVisible(WantNotchLyricsColumn(), animate: !initial);
         bool showFloating = _settings.ShowLyrics && _settings.LyricsPlacement is LyricsPlacement.Floating or LyricsPlacement.NotchAndFloating;
-
-        ColLyrics.Width = showNotchLyrics ? new GridLength(230) : new GridLength(0);
-        ColLyricsDiv.Width = showNotchLyrics ? GridLength.Auto : new GridLength(0);
-        DivLyrics.Visibility = showNotchLyrics ? Visibility.Visible : Visibility.Collapsed;
-        NotchLyrics.Visibility = showNotchLyrics ? Visibility.Visible : Visibility.Collapsed;
 
         ColCal.Width = _settings.ShowCalendar ? new GridLength(188) : new GridLength(0);
         ColCalDiv.Width = _settings.ShowCalendar ? GridLength.Auto : new GridLength(0);
@@ -175,6 +257,9 @@ public partial class MainWindow : Window
 
         NotchLyrics.Mode = _settings.LyricsMode;
         NotchLyrics.LockActiveLine = _settings.LockActiveLine;
+        MiniViz.StyleMode = _settings.VisualizerStyle;
+        MiniViz.AccentColor = _coverAccentColor;
+        UpdateMiniIndicatorVisibility(_media.IsPlaying);
         ModeQuickBtn.ToolTip = IsEn
             ? $"Lyrics mode: {ModeDisplayName(_settings.LyricsMode)} (click to switch)"
             : $"Режим текста: {ModeDisplayName(_settings.LyricsMode)} (нажми для смены)";
@@ -187,7 +272,7 @@ public partial class MainWindow : Window
         {
             if (_floatingWindow == null)
             {
-                _floatingWindow = new FloatingLyricsWindow(_settings);
+                _floatingWindow = new FloatingLyricsWindow(_settings, () => Dispatcher.Invoke(SyncInlineSettingsControls));
                 _floatingWindow.SetLyrics(_currentLyrics);
             }
             else
@@ -213,7 +298,8 @@ public partial class MainWindow : Window
         }
         else
         {
-            Width = GetCollapsedWidth();
+            NotchShell.Width = GetCollapsedWidth();
+            NotchShell.Height = GetCollapsedHeight();
         }
     }
 
@@ -237,6 +323,13 @@ public partial class MainWindow : Window
         BtnBgGlass.Content = en ? "Glass" : "Стекло";
         BtnBgCoverGlass.Content = en ? "Cover + Glass" : "Обложка + Стекло";
         BtnBgCoverBlack.Content = en ? "Cover + Black" : "Обложка + Чёрный";
+
+        LblViz.Text = en ? "Visualizer" : "Визуализатор";
+        BtnVizBars.Content = en ? "Bars" : "Столбики";
+        BtnVizDashes.Content = en ? "Dashes" : "Штрихи";
+        BtnVizWave.Content = en ? "Wave" : "Волна";
+        BtnVizBlocks.Content = en ? "Blocks" : "Блоки";
+        BtnVizNone.Content = en ? "Off" : "Выкл";
 
         LblSecLyrics.Text = en ? "LYRICS" : "НАСТРОЙКИ ТЕКСТА";
         LblPlacement.Text = en ? "Display location" : "Где показывать";
@@ -303,6 +396,12 @@ public partial class MainWindow : Window
         SetPill(BtnBgGlass, _settings.NotchBackground == NotchBackgroundMode.Glass);
         SetPill(BtnBgCoverGlass, _settings.NotchBackground == NotchBackgroundMode.CoverGlass);
         SetPill(BtnBgCoverBlack, _settings.NotchBackground == NotchBackgroundMode.CoverBlack);
+
+        SetPill(BtnVizBars, _settings.VisualizerStyle == VisualizerStyle.Bars);
+        SetPill(BtnVizDashes, _settings.VisualizerStyle == VisualizerStyle.Dashes);
+        SetPill(BtnVizWave, _settings.VisualizerStyle == VisualizerStyle.Wave);
+        SetPill(BtnVizBlocks, _settings.VisualizerStyle == VisualizerStyle.Blocks);
+        SetPill(BtnVizNone, _settings.VisualizerStyle == VisualizerStyle.None);
 
         SetPill(BtnPlaceNotch, _settings.LyricsPlacement == LyricsPlacement.Notch);
         SetPill(BtnPlaceFloat, _settings.LyricsPlacement == LyricsPlacement.Floating);
@@ -396,7 +495,13 @@ public partial class MainWindow : Window
         _settings.UseAppleMusicHdCover = SwHdArt.IsChecked == true;
         _settings.LockActiveLine = SwLockLine.IsChecked == true;
         _settings.ShowLyricsInMiniNotch = SwMiniLyrics.IsChecked == true;
+        bool clickThroughChangedToOff = _settings.FloatingClickThrough && SwClickThrough.IsChecked == false;
         _settings.FloatingClickThrough = SwClickThrough.IsChecked == true;
+        if (clickThroughChangedToOff && (!_settings.ShowLyrics || _settings.LyricsPlacement == LyricsPlacement.Notch))
+        {
+            _settings.ShowLyrics = true;
+            _settings.LyricsPlacement = LyricsPlacement.NotchAndFloating;
+        }
         _settings.IgnoreBrowsers = SwIgnoreBrowsers.IsChecked == true;
 
         _settings.Save();
@@ -421,6 +526,28 @@ public partial class MainWindow : Window
     private void OnBgGlass(object s, RoutedEventArgs e) { _settings.NotchBackground = NotchBackgroundMode.Glass; SaveAndApply(); }
     private void OnBgCoverGlass(object s, RoutedEventArgs e) { _settings.NotchBackground = NotchBackgroundMode.CoverGlass; SaveAndApply(); }
     private void OnBgCoverBlack(object s, RoutedEventArgs e) { _settings.NotchBackground = NotchBackgroundMode.CoverBlack; SaveAndApply(); }
+
+    private void OnVizBars(object s, RoutedEventArgs e) { _settings.VisualizerStyle = VisualizerStyle.Bars; SaveAndApply(); }
+    private void OnVizDashes(object s, RoutedEventArgs e) { _settings.VisualizerStyle = VisualizerStyle.Dashes; SaveAndApply(); }
+    private void OnVizWave(object s, RoutedEventArgs e) { _settings.VisualizerStyle = VisualizerStyle.Wave; SaveAndApply(); }
+    private void OnVizBlocks(object s, RoutedEventArgs e) { _settings.VisualizerStyle = VisualizerStyle.Blocks; SaveAndApply(); }
+    private void OnVizNone(object s, RoutedEventArgs e) { _settings.VisualizerStyle = VisualizerStyle.None; SaveAndApply(); }
+
+    private void UpdateMiniIndicatorVisibility(bool playing)
+    {
+        bool hasTrack = _currentTrack is { HasSession: true } && !string.IsNullOrWhiteSpace(_currentTrack.Title);
+        MiniViz.IsPlaying = playing && hasTrack;
+        if (_settings.VisualizerStyle == VisualizerStyle.None)
+        {
+            MiniViz.Visibility = Visibility.Collapsed;
+            MiniDot.Visibility = (playing && hasTrack) ? Visibility.Visible : Visibility.Collapsed;
+        }
+        else
+        {
+            MiniDot.Visibility = Visibility.Collapsed;
+            MiniViz.Visibility = hasTrack ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
 
     private void ApplyNotchBackground()
     {
@@ -505,12 +632,21 @@ public partial class MainWindow : Window
     private void OnOffsetMinus(object s, RoutedEventArgs e) { _settings.LyricsOffsetSeconds = Math.Round(Math.Clamp(_settings.LyricsOffsetSeconds - 0.1, -3, 3), 1); SaveAndApply(); }
     private void OnOffsetPlus(object s, RoutedEventArgs e) { _settings.LyricsOffsetSeconds = Math.Round(Math.Clamp(_settings.LyricsOffsetSeconds + 0.1, -3, 3), 1); SaveAndApply(); }
 
-    private void OnFloatBottom(object s, RoutedEventArgs e) { _settings.FloatingPosition = FloatingPosition.BottomCenter; SaveAndApply(); }
-    private void OnFloatTop(object s, RoutedEventArgs e) { _settings.FloatingPosition = FloatingPosition.TopBelowNotch; SaveAndApply(); }
-    private void OnFloatCustom(object s, RoutedEventArgs e) { _settings.FloatingPosition = FloatingPosition.Custom; SaveAndApply(); }
+    private void EnsureFloatingVisible()
+    {
+        if (!_settings.ShowLyrics || _settings.LyricsPlacement == LyricsPlacement.Notch)
+        {
+            _settings.ShowLyrics = true;
+            _settings.LyricsPlacement = LyricsPlacement.NotchAndFloating;
+        }
+    }
 
-    private void OnFontMinus(object s, RoutedEventArgs e) { _settings.FloatingFontSize = Math.Clamp(_settings.FloatingFontSize - 2, 14, 36); SaveAndApply(); }
-    private void OnFontPlus(object s, RoutedEventArgs e) { _settings.FloatingFontSize = Math.Clamp(_settings.FloatingFontSize + 2, 14, 36); SaveAndApply(); }
+    private void OnFloatBottom(object s, RoutedEventArgs e) { EnsureFloatingVisible(); _settings.FloatingPosition = FloatingPosition.BottomCenter; SaveAndApply(); }
+    private void OnFloatTop(object s, RoutedEventArgs e) { EnsureFloatingVisible(); _settings.FloatingPosition = FloatingPosition.TopBelowNotch; SaveAndApply(); }
+    private void OnFloatCustom(object s, RoutedEventArgs e) { EnsureFloatingVisible(); _settings.FloatingPosition = FloatingPosition.Custom; _settings.FloatingClickThrough = false; SaveAndApply(); }
+
+    private void OnFontMinus(object s, RoutedEventArgs e) { EnsureFloatingVisible(); _settings.FloatingFontSize = Math.Clamp(_settings.FloatingFontSize - 2, 14, 36); SaveAndApply(); }
+    private void OnFontPlus(object s, RoutedEventArgs e) { EnsureFloatingVisible(); _settings.FloatingFontSize = Math.Clamp(_settings.FloatingFontSize + 2, 14, 36); SaveAndApply(); }
 
     private void SaveAndApply()
     {
@@ -636,30 +772,45 @@ public partial class MainWindow : Window
         InlineBlockInput.Clear();
     }
 
-    // ---------- Hover & Animation ----------
-    private void Tick(object? sender, EventArgs e)
+    // ---------- Hover & 60 FPS Animation ----------
+    private void OnRenderFrame(object? sender, EventArgs e)
     {
-        if (DateTime.Today != _calendarDate)
-            BuildCalendar(DateTime.Today);
+        long nowTicks = DateTime.UtcNow.Ticks;
 
-        if (!_inSettings && PresentationSource.FromVisual(this) is { } src)
+        if (!_open)
+            MiniViz.StepFrame(nowTicks);
+
+        // Poll hover & calendar every ~25ms to keep CPU ultra-low
+        if (nowTicks - _lastHoverCheckTicks >= TimeSpan.TicksPerMillisecond * 25)
         {
-            GetCursorPos(out var c);
-            var p = src.CompositionTarget.TransformFromDevice.Transform(new Point(c.X, c.Y));
+            _lastHoverCheckTicks = nowTicks;
 
-            bool inside = p.X >= Left - 8 && p.X <= Left + Width + 8 && p.Y >= 0 && p.Y <= Top + Height + 8;
-            bool menuOpen = NotchShell.ContextMenu?.IsOpen == true;
+            if (DateTime.Today != _calendarDate)
+                BuildCalendar(DateTime.Today);
 
-            if (inside || menuOpen)
+            if (!_inSettings && PresentationSource.FromVisual(this) is { } src)
             {
-                _idleSince = null;
-                if (!_open) SetOpen(true);
-            }
-            else if (_open)
-            {
-                _idleSince ??= DateTime.Now;
-                if ((DateTime.Now - _idleSince.Value).TotalMilliseconds > 360)
-                    SetOpen(false);
+                GetCursorPos(out var c);
+                var p = src.CompositionTarget.TransformFromDevice.Transform(new Point(c.X, c.Y));
+
+                double shellW = NotchShell.ActualWidth > 0 ? NotchShell.ActualWidth : NotchShell.Width;
+                double shellH = NotchShell.ActualHeight > 0 ? NotchShell.ActualHeight : NotchShell.Height;
+                double shellLeft = Left + (ActualWidth - shellW) / 2.0;
+
+                bool inside = p.X >= shellLeft - 8 && p.X <= shellLeft + shellW + 8 && p.Y >= 0 && p.Y <= Top + shellH + 8;
+                bool menuOpen = NotchShell.ContextMenu?.IsOpen == true;
+
+                if (inside || menuOpen)
+                {
+                    _idleSince = null;
+                    if (!_open) SetOpen(true);
+                }
+                else if (_open)
+                {
+                    _idleSince ??= DateTime.Now;
+                    if ((DateTime.Now - _idleSince.Value).TotalMilliseconds > 360)
+                        SetOpen(false);
+                }
             }
         }
 
@@ -671,16 +822,34 @@ public partial class MainWindow : Window
         _open = expand;
         AnimateSize(expand);
 
-        var d = TimeSpan.FromMilliseconds(250);
-        Full.BeginAnimation(OpacityProperty, new DoubleAnimation(expand ? 1 : 0, d));
-        Mini.BeginAnimation(OpacityProperty, new DoubleAnimation(expand ? 0 : 1, d));
+        var fullOp = new DoubleAnimation(expand ? 1 : 0, TimeSpan.FromMilliseconds(expand ? 280 : 150))
+        {
+            BeginTime = expand ? TimeSpan.FromMilliseconds(45) : TimeSpan.Zero,
+            EasingFunction = SilkyEase
+        };
+        var miniOp = new DoubleAnimation(expand ? 0 : 1, TimeSpan.FromMilliseconds(expand ? 130 : 240))
+        {
+            BeginTime = expand ? TimeSpan.Zero : TimeSpan.FromMilliseconds(60),
+            EasingFunction = SilkyEase
+        };
+        var scale = new DoubleAnimation(expand ? 1.0 : 0.965, TimeSpan.FromMilliseconds(expand ? 320 : 220))
+        {
+            EasingFunction = SilkyEase
+        };
+        Timeline.SetDesiredFrameRate(fullOp, 60);
+        Timeline.SetDesiredFrameRate(miniOp, 60);
+        Timeline.SetDesiredFrameRate(scale, 60);
+
+        Full.BeginAnimation(OpacityProperty, fullOp);
+        Mini.BeginAnimation(OpacityProperty, miniOp);
+        FullScale.BeginAnimation(ScaleTransform.ScaleXProperty, scale);
+        FullScale.BeginAnimation(ScaleTransform.ScaleYProperty, scale);
         Full.IsHitTestVisible = expand;
     }
 
     private void AnimateSize(bool expand)
     {
-        var d = TimeSpan.FromMilliseconds(260);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var d = TimeSpan.FromMilliseconds(expand ? 360 : 300);
         bool twoLine = IsMiniTwoLine();
         Mini.Height = twoLine ? 52 : 34;
         MiniArtBox.Width = twoLine ? 28 : 20;
@@ -691,8 +860,14 @@ public partial class MainWindow : Window
         double targetW = expand ? GetExpandedWidth() : GetCollapsedWidth();
         double targetH = expand ? GetExpandedHeight() : GetCollapsedHeight();
 
-        BeginAnimation(WidthProperty, new DoubleAnimation(targetW, d) { EasingFunction = ease });
-        BeginAnimation(HeightProperty, new DoubleAnimation(targetH, d) { EasingFunction = ease });
+        // Animate NotchShell inside the fixed transparent window (zero Win32 WM_SIZE / SetWindowPos jitter!)
+        var wAnim = new DoubleAnimation(targetW, d) { EasingFunction = SilkyEase };
+        var hAnim = new DoubleAnimation(targetH, d) { EasingFunction = SilkyEase };
+        Timeline.SetDesiredFrameRate(wAnim, 60);
+        Timeline.SetDesiredFrameRate(hAnim, 60);
+
+        NotchShell.BeginAnimation(WidthProperty, wAnim);
+        NotchShell.BeginAnimation(HeightProperty, hAnim);
     }
 
     // ---------- Media Handling ----------
@@ -713,7 +888,8 @@ public partial class MainWindow : Window
             MiniText.Text = _defaultMiniText;
             MiniLyricText.Text = "";
             MiniLyricText.Visibility = Visibility.Collapsed;
-            MiniDot.Visibility = Visibility.Collapsed;
+            UpdateMiniIndicatorVisibility(false);
+            SetLyricsColumnVisible(false, animate: true);
             if (!_open) AnimateSize(false);
             ArtImg.Source = null;
             MiniArt.Source = null;
@@ -755,8 +931,10 @@ public partial class MainWindow : Window
             ArtImg.Source = snap.Thumbnail;
             MiniArt.Source = snap.Thumbnail;
             _coverAccentColor = ArtworkService.ExtractAccentColor(snap.Thumbnail);
+            MiniViz.AccentColor = _coverAccentColor;
             ApplyNotchBackground();
         }
+        UpdateMiniIndicatorVisibility(_media.IsPlaying);
 
         bool showFloating = _settings.ShowLyrics && _settings.LyricsPlacement is LyricsPlacement.Floating or LyricsPlacement.NotchAndFloating;
         if (showFloating && _floatingWindow != null && !_floatingWindow.IsVisible)
@@ -779,7 +957,7 @@ public partial class MainWindow : Window
     private void OnPlaybackChanged(bool playing, TimeSpan pos, TimeSpan dur)
     {
         PlayPauseIcon.Data = playing ? PauseGeometry : PlayGeometry;
-        MiniDot.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
+        UpdateMiniIndicatorVisibility(playing);
         UpdateProgressVisual(pos, dur);
     }
 
@@ -795,6 +973,7 @@ public partial class MainWindow : Window
             ArtImg.Source = hd;
             MiniArt.Source = hd;
             _coverAccentColor = ArtworkService.ExtractAccentColor(hd);
+            MiniViz.AccentColor = _coverAccentColor;
             ApplyNotchBackground();
         });
     }
@@ -805,7 +984,7 @@ public partial class MainWindow : Window
         var searching = IsEn ? "Searching lyrics…" : "Ищу текст…";
         Dispatcher.Invoke(() =>
         {
-            NotchLyrics.SetStatus(searching);
+            if (_lyricsColumnVisible) NotchLyrics.SetStatus(searching);
             _floatingWindow?.SetStatus(searching);
         });
 
@@ -823,6 +1002,7 @@ public partial class MainWindow : Window
             if (ct.IsCancellationRequested) return;
             NotchLyrics.SetLyrics(result);
             _floatingWindow?.SetLyrics(result);
+            SetLyricsColumnVisible(WantNotchLyricsColumn(), animate: true);
             if (!_open && _settings.ShowLyrics && _settings.ShowLyricsInMiniNotch)
                 AnimateSize(false);
             UpdateLyricsPosition(force: true);
