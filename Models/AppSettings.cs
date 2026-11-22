@@ -51,6 +51,34 @@ public enum VisualizerStyle
     None
 }
 
+public enum NotchDockEdge
+{
+    Top,
+    Bottom,
+    Left,
+    Right,
+    Floating,
+    CornerTopLeft,
+    CornerTopRight,
+    CornerBottomLeft,
+    CornerBottomRight
+}
+
+public enum SideProgressStyle
+{
+    Ring,
+    Bar,
+    Dots,
+    Time,
+    Capsule
+}
+
+public enum CoverShimmerStyle
+{
+    Aurora,
+    SpotifyMesh
+}
+
 public class AppSettings
 {
     public bool ShowLyrics { get; set; } = true;
@@ -62,7 +90,17 @@ public class AppSettings
     public double LyricsOffsetSeconds { get; set; } = 0.2;
 
     public NotchBackgroundMode NotchBackground { get; set; } = NotchBackgroundMode.Black;
+    public bool CoverShimmerEnabled { get; set; } = true;
+    public CoverShimmerStyle CoverShimmerStyle { get; set; } = CoverShimmerStyle.Aurora;
     public VisualizerStyle VisualizerStyle { get; set; } = VisualizerStyle.Bars;
+
+    public NotchDockEdge DockEdge { get; set; } = NotchDockEdge.Top;
+    public double? NotchCustomX { get; set; }
+    public double? NotchCustomY { get; set; }
+    public bool AllowNotchDrag { get; set; } = true;
+    public bool SideEdgeAutoExpand { get; set; } = true;
+    public SideProgressStyle SideProgressStyle { get; set; } = SideProgressStyle.Ring;
+    public bool CornerWrapBetaEnabled { get; set; } = true;
 
     public bool UseAppleMusicHdCover { get; set; } = true;
     public bool IgnoreBrowsers { get; set; } = true;

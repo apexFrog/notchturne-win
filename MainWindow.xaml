@@ -4,7 +4,7 @@
         xmlns:controls="clr-namespace:NotchturneWin.Controls"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
-        Width="1060" Height="420" Top="0">
+        Width="1160" Height="420" Top="0">
   <Window.Resources>
     <Style x:Key="IconBtn" TargetType="Button">
       <Setter Property="Background" Value="Transparent"/>
@@ -99,32 +99,45 @@
     </Style>
   </Window.Resources>
 
+  <Grid>
   <Border x:Name="NotchShell" Background="#FF000000" CornerRadius="0,0,26,26"
           BorderBrush="#1AFFFFFF" BorderThickness="1,0,1,1"
           HorizontalAlignment="Center" VerticalAlignment="Top"
-          Width="250" Height="34" ClipToBounds="True">
+          Width="250" Height="34" ClipToBounds="True"
+          MouseLeftButtonDown="NotchShell_MouseLeftButtonDown"
+          MouseMove="NotchShell_MouseMove"
+          MouseLeftButtonUp="NotchShell_MouseLeftButtonUp"
+          LostMouseCapture="NotchShell_LostMouseCapture">
     <Border.ContextMenu>
       <ContextMenu>
         <MenuItem x:Name="CtxSettings" Header="Настройки…" Click="OpenSettings"/>
         <MenuItem x:Name="CtxCycleMode" Header="Сменить режим текста" Click="CycleLyricsMode"/>
+        <MenuItem x:Name="CtxResetPos" Header="Сбросить позицию (вверх по центру)" Click="ResetNotchPosition"/>
         <Separator/>
         <MenuItem x:Name="CtxQuit" Header="Выход" Click="Quit"/>
       </ContextMenu>
     </Border.ContextMenu>
 
     <Grid>
-      <!-- Ambient Cover / Glass Glow Layer -->
-      <Border x:Name="NotchGlowLayer" CornerRadius="0,0,26,26" IsHitTestVisible="False" Visibility="Collapsed"/>
+      <!-- Ambient Cover / Glass Glow & Shimmer Layers (clipped via exact PathGeometry, zero VisualBrush offset) -->
+      <Grid x:Name="NotchBgContainer" IsHitTestVisible="False" SizeChanged="NotchBgContainer_SizeChanged">
+        <Border x:Name="NotchGlowLayer" IsHitTestVisible="False" Visibility="Collapsed"/>
+        <controls:CoverShimmerLayer x:Name="NotchShimmer" IsHitTestVisible="False" Visibility="Collapsed"/>
+      </Grid>
 
       <!-- Collapsed Mini Bar -->
-      <Grid x:Name="Mini" Margin="14,0" VerticalAlignment="Top" Height="34">
+      <Grid x:Name="Mini" Margin="14,0" VerticalAlignment="Center" Height="34">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <Border x:Name="MiniArtBox" Width="20" Height="20" CornerRadius="5" Background="#1C1C20" ClipToBounds="True" Margin="0,0,9,0" VerticalAlignment="Center">
-          <Image x:Name="MiniArt" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
+        <Border x:Name="MiniArtBox" Width="20" Height="20" CornerRadius="6" Background="#1C1C20" Margin="0,0,9,0" VerticalAlignment="Center">
+          <Border x:Name="MiniArtLayer" CornerRadius="6" RenderOptions.BitmapScalingMode="HighQuality">
+            <Border.Background>
+              <ImageBrush x:Name="MiniArtBrush" Stretch="UniformToFill"/>
+            </Border.Background>
+          </Border>
         </Border>
         <StackPanel Grid.Column="1" VerticalAlignment="Center">
           <TextBlock x:Name="MiniText" Foreground="#F2F2F7" FontSize="12" FontWeight="Medium"
@@ -137,6 +150,167 @@
           <Ellipse x:Name="MiniDot" Width="6" Height="6" Fill="#1DB954"
                    VerticalAlignment="Center" Visibility="Collapsed"/>
         </StackPanel>
+      </Grid>
+
+      <!-- Collapsed Vertical Side Pill (Beta: when snapped to Left or Right edge) -->
+      <Grid x:Name="MiniVertical" Margin="0,14" HorizontalAlignment="Center" VerticalAlignment="Stretch" Visibility="Collapsed">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border x:Name="MiniVertArtBox" Grid.Row="0" Width="34" Height="34" CornerRadius="10" Background="#1C1C20" HorizontalAlignment="Center">
+          <Border x:Name="MiniVertArtLayer" CornerRadius="10" RenderOptions.BitmapScalingMode="HighQuality">
+            <Border.Background>
+              <ImageBrush x:Name="MiniVertArtBrush" Stretch="UniformToFill"/>
+            </Border.Background>
+            <Border CornerRadius="10" BorderBrush="#26FFFFFF" BorderThickness="1" IsHitTestVisible="False"/>
+          </Border>
+        </Border>
+
+        <!-- Multi-style compact progress/timer indicator -->
+        <controls:SideProgressIndicator x:Name="SideProgInd" Grid.Row="1" Width="46" Height="64"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+        <Grid Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <controls:MiniVisualizer x:Name="MiniVizVert" Width="20" Height="16" HorizontalAlignment="Center"/>
+          <Ellipse x:Name="MiniDotVert" Width="7" Height="7" Fill="#1DB954" HorizontalAlignment="Center" Visibility="Collapsed"/>
+        </Grid>
+      </Grid>
+
+      <!-- Expanded Vertical Side Panel (Beta: when snapped to Left or Right edge) -->
+      <Grid x:Name="FullVertical" Margin="20,18,20,18" Opacity="0" IsHitTestVisible="False" Visibility="Collapsed" RenderTransformOrigin="0.5,0.5">
+        <Grid.RenderTransform>
+          <ScaleTransform x:Name="FullVertScale" ScaleX="0.97" ScaleY="0.97"/>
+        </Grid.RenderTransform>
+
+        <!-- Settings Gear top-right -->
+        <Button Style="{StaticResource IconBtn}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="0,-8,-8,0" Padding="5" ToolTip="Настройки" Click="OpenSettings" Panel.ZIndex="10">
+          <Path Data="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"
+                Fill="#6E6E73" Stretch="Uniform" Width="14" Height="14"/>
+        </Button>
+
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+
+          <!-- Top Player Block -->
+          <StackPanel Grid.Row="0" HorizontalAlignment="Stretch">
+            <!-- Large Centered Rounded HD Cover -->
+            <Grid Width="132" Height="132" HorizontalAlignment="Center" Margin="0,2,0,12">
+              <Border CornerRadius="20" Background="#1A1A1E">
+                <Border.Effect>
+                  <DropShadowEffect Color="Black" BlurRadius="20" ShadowDepth="5" Opacity="0.5"/>
+                </Border.Effect>
+                <Border CornerRadius="20" RenderOptions.BitmapScalingMode="HighQuality">
+                  <Border.Background>
+                    <ImageBrush x:Name="ArtVertBrush" Stretch="UniformToFill"/>
+                  </Border.Background>
+                  <Border CornerRadius="20" BorderBrush="#2AFFFFFF" BorderThickness="1" IsHitTestVisible="False"/>
+                </Border>
+              </Border>
+              <Border x:Name="SourceBadgeVert" Width="24" Height="24" CornerRadius="8"
+                      HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,7,7"
+                      Background="#FA2D48" BorderBrush="#CC000000" BorderThickness="1.5" Visibility="Collapsed">
+                <TextBlock x:Name="SourceBadgeTextVert" Text="♪" Foreground="White" FontSize="11.5" FontWeight="Bold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+            </Grid>
+
+            <!-- Title & Artist -->
+            <TextBlock x:Name="TitleTextVert" Text="Ничего не играет" Foreground="White" FontSize="16"
+                       FontWeight="SemiBold" TextAlignment="Center" TextTrimming="CharacterEllipsis" Margin="6,0"/>
+            <TextBlock x:Name="ArtistTextVert" Text="" Foreground="#9A9AA2" FontSize="12.5"
+                       TextAlignment="Center" TextTrimming="CharacterEllipsis" Margin="6,2,6,10"/>
+
+            <!-- Seek Bar -->
+            <Grid x:Name="SeekTrackVert" Height="14" Background="Transparent" Cursor="Hand"
+                  MouseLeftButtonDown="SeekVertDown" MouseMove="SeekVertMove">
+              <Border Height="3.5" CornerRadius="2" Background="#3A3A3C" VerticalAlignment="Center"/>
+              <Border x:Name="ProgressFillVert" Height="3.5" CornerRadius="2" Background="White"
+                      HorizontalAlignment="Left" Width="0" VerticalAlignment="Center"/>
+            </Grid>
+            <Grid Margin="0,2,0,8">
+              <TextBlock x:Name="ElapsedTextVert" Text="0:00" Foreground="#7A7A80" FontSize="11" HorizontalAlignment="Left"/>
+              <TextBlock x:Name="RemainingTextVert" Text="-0:00" Foreground="#7A7A80" FontSize="11" HorizontalAlignment="Right"/>
+            </Grid>
+
+            <!-- Playback Controls -->
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+
+              <Button x:Name="ModeQuickBtnVert" Style="{StaticResource IconBtn}" Padding="4" Click="CycleLyricsMode"
+                      ToolTip="Сменить режим текста">
+                <TextBlock Text="♪" Foreground="#FF3B5C" FontSize="14" FontWeight="Bold"/>
+              </Button>
+
+              <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Button Style="{StaticResource IconBtn}" Padding="10,4" Click="Prev" ToolTip="Предыдущий">
+                  <Path Data="M11,18V6l-8.5,6L11,18z M11.5,12l8.5,6V6L11.5,12z"
+                        Fill="White" Stretch="Uniform" Width="18" Height="14"/>
+                </Button>
+                <Button Style="{StaticResource IconBtn}" Padding="12,4" Click="PlayPause" ToolTip="Пауза / Воспроизведение">
+                  <Path x:Name="PlayPauseIconVert" Data="M8,5v14l11-7L8,5z"
+                        Fill="White" Stretch="Uniform" Width="16" Height="17"/>
+                </Button>
+                <Button Style="{StaticResource IconBtn}" Padding="10,4" Click="Next" ToolTip="Следующий">
+                  <Path Data="M4,18l8.5-6L4,6V18z M13,6v12l8.5-6L13,6z"
+                        Fill="White" Stretch="Uniform" Width="18" Height="14"/>
+                </Button>
+              </StackPanel>
+
+              <Button x:Name="SourceStatusBtnVert" Grid.Column="2" Style="{StaticResource IconBtn}" Padding="4" Click="OpenSettings"
+                      ToolTip="Источник медиа (настройки)">
+                <Border x:Name="SourceStatusDotVert" Width="14" Height="14" CornerRadius="7" Background="#1DB954">
+                  <TextBlock Text="✓" Foreground="Black" FontSize="9" FontWeight="Bold"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+              </Button>
+            </Grid>
+          </StackPanel>
+
+          <!-- Horizontal Divider & Optional Compact Tab Switcher -->
+          <StackPanel x:Name="SideBottomHeader" Grid.Row="1" Margin="0,12,0,8">
+            <Border Height="1" Background="#24FFFFFF" Margin="0,0,0,8"/>
+            <StackPanel x:Name="SideTabRow" Orientation="Horizontal" HorizontalAlignment="Center" Visibility="Collapsed">
+              <Button x:Name="BtnSideTabLyrics" Content="Текст" Style="{StaticResource SegPill}" Padding="10,3" Margin="0,0,4,0" Click="OnSideTabLyrics"/>
+              <Button x:Name="BtnSideTabCal" Content="Календарь" Style="{StaticResource SegPill}" Padding="10,3" Margin="0,0,4,0" Click="OnSideTabCal"/>
+              <Button x:Name="BtnSideTabClip" Content="Буфер" Style="{StaticResource SegPill}" Padding="10,3" Click="OnSideTabClip"/>
+            </StackPanel>
+          </StackPanel>
+
+          <!-- Bottom Content Area: Lyrics / Calendar / Clipboard -->
+          <Grid x:Name="SideBottomContent" Grid.Row="2">
+            <controls:LyricsView x:Name="SideLyrics" VerticalAlignment="Stretch"/>
+
+            <Grid x:Name="SideCalendarPanel" VerticalAlignment="Center" Visibility="Collapsed" Margin="8,0">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <TextBlock x:Name="SideCalMonthTitle" Text="NOVEMBER 2026" Foreground="#8E8E93" FontSize="11"
+                         FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+              <UniformGrid x:Name="SideCalWeekdaysGrid" Grid.Row="1" Columns="7" Margin="0,0,0,6"/>
+              <UniformGrid x:Name="SideCalDaysGrid" Grid.Row="2" Columns="7"/>
+            </Grid>
+
+            <Grid x:Name="SideClipboardPanel" VerticalAlignment="Stretch" Visibility="Collapsed">
+              <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="SideClipList"/>
+              </ScrollViewer>
+            </Grid>
+          </Grid>
+        </Grid>
       </Grid>
 
       <!-- Expanded Wide Notch (Player + Lyrics + Calendar + Clipboard) -->
@@ -153,7 +327,7 @@
 
         <Grid>
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="340"/>
+            <ColumnDefinition x:Name="ColPlayer" Width="340"/>
             <ColumnDefinition x:Name="ColLyricsDiv" Width="Auto"/>
             <ColumnDefinition x:Name="ColLyrics" Width="230"/>
             <ColumnDefinition x:Name="ColCalDiv" Width="Auto"/>
@@ -170,11 +344,19 @@
             </Grid.ColumnDefinitions>
 
             <Grid Width="116" Height="116" HorizontalAlignment="Left" VerticalAlignment="Center">
-              <Border CornerRadius="12" Background="#1A1A1E" ClipToBounds="True">
-                <Image x:Name="ArtImg" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
+              <Border CornerRadius="18" Background="#1A1A1E">
+                <Border.Effect>
+                  <DropShadowEffect Color="Black" BlurRadius="16" ShadowDepth="4" Opacity="0.45"/>
+                </Border.Effect>
+                <Border x:Name="ArtBorder" CornerRadius="18" RenderOptions.BitmapScalingMode="HighQuality">
+                  <Border.Background>
+                    <ImageBrush x:Name="ArtBrush" Stretch="UniformToFill"/>
+                  </Border.Background>
+                  <Border CornerRadius="18" BorderBrush="#26FFFFFF" BorderThickness="1" IsHitTestVisible="False"/>
+                </Border>
               </Border>
-              <Border x:Name="SourceBadge" Width="22" Height="22" CornerRadius="6"
-                      HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,5,5"
+              <Border x:Name="SourceBadge" Width="22" Height="22" CornerRadius="7"
+                      HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,6,6"
                       Background="#FA2D48" BorderBrush="#CC000000" BorderThickness="1.5" Visibility="Collapsed">
                 <TextBlock x:Name="SourceBadgeText" Text="♪" Foreground="White" FontSize="11" FontWeight="Bold"
                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -361,6 +543,57 @@
             <Border Style="{StaticResource SettingSep}"/>
 
             <Grid>
+              <TextBlock x:Name="LblCoverShimmer" Text="Перелив цвета обложки" Style="{StaticResource SettingRowLabel}"/>
+              <CheckBox x:Name="SwCoverShimmer" Style="{StaticResource IosSwitch}" HorizontalAlignment="Right" Click="OnInlineToggle"/>
+            </Grid>
+            <Border Style="{StaticResource SettingSep}"/>
+
+            <Grid x:Name="ShimmerStyleRow">
+              <TextBlock x:Name="LblShimmerStyle" Text="Стиль перелива" Style="{StaticResource SettingRowLabel}"/>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnShimmerV1" Content="Вариант 1 (Сияние)" Style="{StaticResource SegPill}" Padding="9,4" Margin="0,0,4,0" Click="OnShimmerV1"/>
+                <Button x:Name="BtnShimmerV2" Content="Вариант 2 (Mesh)" Style="{StaticResource SegPill}" Padding="9,4" Click="OnShimmerV2"/>
+              </StackPanel>
+            </Grid>
+            <Border x:Name="ShimmerStyleSep" Style="{StaticResource SettingSep}"/>
+
+            <Grid>
+              <TextBlock x:Name="LblAllowDrag" Text="Перетаскивание острова" Style="{StaticResource SettingRowLabel}"/>
+              <CheckBox x:Name="SwAllowDrag" Style="{StaticResource IosSwitch}" HorizontalAlignment="Right" Click="OnInlineToggle"/>
+            </Grid>
+            <Border Style="{StaticResource SettingSep}"/>
+
+            <Grid>
+              <TextBlock x:Name="LblSideExpand" Text="Боковая панель по краям" Style="{StaticResource SettingRowLabel}"/>
+              <CheckBox x:Name="SwSideExpand" Style="{StaticResource IosSwitch}" HorizontalAlignment="Right" Click="OnInlineToggle"/>
+            </Grid>
+            <Border Style="{StaticResource SettingSep}"/>
+
+            <Grid x:Name="SideProgStyleRow">
+              <TextBlock x:Name="LblSideProgStyle" Text="Таймер сбоку" Style="{StaticResource SettingRowLabel}"/>
+              <WrapPanel HorizontalAlignment="Right" MaxWidth="310">
+                <Button x:Name="BtnProgRing" Content="Кольцо" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnProgRing"/>
+                <Button x:Name="BtnProgBar" Content="Полоса" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnProgBar"/>
+                <Button x:Name="BtnProgDots" Content="Точки" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnProgDots"/>
+                <Button x:Name="BtnProgTime" Content="Таймер" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnProgTime"/>
+                <Button x:Name="BtnProgCapsule" Content="Капсула" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnProgCapsule"/>
+              </WrapPanel>
+            </Grid>
+            <Border Style="{StaticResource SettingSep}"/>
+
+            <Grid>
+              <TextBlock x:Name="LblCornerWrap" Text="Угловой перегиб (Бета)" Style="{StaticResource SettingRowLabel}"/>
+              <CheckBox x:Name="SwCornerWrap" Style="{StaticResource IosSwitch}" HorizontalAlignment="Right" Click="OnInlineToggle"/>
+            </Grid>
+            <Border Style="{StaticResource SettingSep}"/>
+
+            <Grid>
+              <TextBlock x:Name="LblNotchPos" Text="Позиция острова" Style="{StaticResource SettingRowLabel}"/>
+              <Button x:Name="BtnResetPos" Content="Вверх по центру" Style="{StaticResource SegPill}" Padding="10,4" HorizontalAlignment="Right" Click="ResetNotchPosition"/>
+            </Grid>
+            <Border Style="{StaticResource SettingSep}"/>
+
+            <Grid>
               <TextBlock x:Name="LblViz" Text="Визуализатор" Style="{StaticResource SettingRowLabel}"/>
               <WrapPanel HorizontalAlignment="Right" MaxWidth="310">
                 <Button x:Name="BtnVizBars" Content="Столбики" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnVizBars"/>
@@ -488,4 +721,180 @@
       </Grid>
     </Grid>
   </Border>
+
+  <!-- Corner-Wrap L-Shaped Dynamic Island (Beta: bends seamlessly around screen corners!) -->
+  <Grid x:Name="CornerShell" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Top"
+        Width="600" Height="460"
+        MouseLeftButtonDown="NotchShell_MouseLeftButtonDown"
+        MouseMove="NotchShell_MouseMove"
+        MouseLeftButtonUp="NotchShell_MouseLeftButtonUp"
+        LostMouseCapture="NotchShell_LostMouseCapture">
+    <Grid.ContextMenu>
+      <ContextMenu>
+        <MenuItem x:Name="CtxCornerSettings" Header="Настройки…" Click="OpenSettings"/>
+        <MenuItem x:Name="CtxCornerCycleMode" Header="Сменить режим текста" Click="CycleLyricsMode"/>
+        <MenuItem x:Name="CtxCornerResetPos" Header="Сбросить позицию (вверх по центру)" Click="ResetNotchPosition"/>
+        <Separator/>
+        <MenuItem x:Name="CtxCornerQuit" Header="Выход" Click="Quit"/>
+      </ContextMenu>
+    </Grid.ContextMenu>
+
+    <!-- Unified L-shaped background + glass border -->
+    <Path x:Name="CornerBgPath" Fill="#FF000000" Stroke="#26FFFFFF" StrokeThickness="1"/>
+
+    <!-- Shimmer & ambient glow clipped to the exact L-shaped PathGeometry -->
+    <Grid x:Name="CornerBgClipHost" IsHitTestVisible="False">
+      <Border x:Name="CornerGlowLayer" IsHitTestVisible="False" Visibility="Collapsed"/>
+      <controls:CoverShimmerLayer x:Name="CornerShimmer" IsHitTestVisible="False" Visibility="Collapsed"/>
+    </Grid>
+
+    <!-- Interactive content canvas positioned dynamically into horizontal & vertical arms -->
+    <Canvas x:Name="CornerContentCanvas">
+      <!-- Collapsed: Horizontal Arm (Cover + Title) -->
+      <Grid x:Name="CornerMiniHoriz" Width="260" Height="42">
+        <Grid Margin="12,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <Border Width="24" Height="24" CornerRadius="7" Background="#1C1C20" Margin="0,0,9,0" VerticalAlignment="Center">
+            <Border CornerRadius="7" RenderOptions.BitmapScalingMode="HighQuality">
+              <Border.Background>
+                <ImageBrush x:Name="CornerMiniArtBrush" Stretch="UniformToFill"/>
+              </Border.Background>
+            </Border>
+          </Border>
+          <TextBlock x:Name="CornerMiniText" Grid.Column="1" Foreground="#F2F2F7" FontSize="12" FontWeight="Medium"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="Ничего не играет"/>
+        </Grid>
+      </Grid>
+
+      <!-- Collapsed: Corner Junction (Music Visualizer right in the corner bend!) -->
+      <Grid x:Name="CornerMiniJunction" Width="58" Height="42">
+        <controls:MiniVisualizer x:Name="CornerMiniViz" Width="20" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <Ellipse x:Name="CornerMiniDot" Width="7" Height="7" Fill="#1DB954" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+      </Grid>
+
+      <!-- Collapsed: Vertical Arm (Progress/Timer Indicator) -->
+      <Grid x:Name="CornerMiniVert" Width="58" Height="106">
+        <controls:SideProgressIndicator x:Name="CornerMiniProg" Width="46" Height="64" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      </Grid>
+
+      <!-- Expanded: Horizontal Arm (Full Media Player) -->
+      <Grid x:Name="CornerFullHoriz" Width="580" Height="164" Opacity="0" IsHitTestVisible="False">
+        <Button Style="{StaticResource IconBtn}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="0,8,10,0" Padding="5" ToolTip="Настройки" Click="OpenSettings" Panel.ZIndex="10">
+          <Path Data="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"
+                Fill="#6E6E73" Stretch="Uniform" Width="14" Height="14"/>
+        </Button>
+
+        <Grid Margin="18,16,32,16" VerticalAlignment="Center">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="120"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+
+          <Grid Width="112" Height="112" HorizontalAlignment="Left" VerticalAlignment="Center">
+            <Border CornerRadius="18" Background="#1A1A1E">
+              <Border.Effect>
+                <DropShadowEffect Color="Black" BlurRadius="16" ShadowDepth="4" Opacity="0.45"/>
+              </Border.Effect>
+              <Border CornerRadius="18" RenderOptions.BitmapScalingMode="HighQuality">
+                <Border.Background>
+                  <ImageBrush x:Name="CornerArtBrush" Stretch="UniformToFill"/>
+                </Border.Background>
+                <Border CornerRadius="18" BorderBrush="#26FFFFFF" BorderThickness="1" IsHitTestVisible="False"/>
+              </Border>
+            </Border>
+            <Border x:Name="CornerSourceBadge" Width="22" Height="22" CornerRadius="7"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,6,6"
+                    Background="#FA2D48" BorderBrush="#CC000000" BorderThickness="1.5" Visibility="Collapsed">
+              <TextBlock x:Name="CornerSourceBadgeText" Text="♪" Foreground="White" FontSize="11" FontWeight="Bold"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </Grid>
+
+          <Grid Grid.Column="1" Margin="14,2,6,2">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0">
+              <TextBlock x:Name="CornerTitleText" Text="Ничего не играет" Foreground="White" FontSize="15.5"
+                         FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+              <TextBlock x:Name="CornerArtistText" Text="" Foreground="#8E8E93" FontSize="12.5"
+                         Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Margin="0,10,0,8">
+              <Grid x:Name="SeekTrackCorner" Height="14" Background="Transparent" Cursor="Hand"
+                    MouseLeftButtonDown="SeekCornerDown" MouseMove="SeekCornerMove">
+                <Border Height="3.5" CornerRadius="2" Background="#3A3A3C" VerticalAlignment="Center"/>
+                <Border x:Name="ProgressFillCorner" Height="3.5" CornerRadius="2" Background="White"
+                        HorizontalAlignment="Left" Width="0" VerticalAlignment="Center"/>
+              </Grid>
+              <Grid Margin="0,2,0,0">
+                <TextBlock x:Name="ElapsedTextCorner" Text="0:00" Foreground="#7A7A80" FontSize="11" HorizontalAlignment="Left"/>
+                <TextBlock x:Name="RemainingTextCorner" Text="-0:00" Foreground="#7A7A80" FontSize="11" HorizontalAlignment="Right"/>
+              </Grid>
+            </StackPanel>
+
+            <Grid Grid.Row="3">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+
+              <Button x:Name="ModeQuickBtnCorner" Style="{StaticResource IconBtn}" Padding="4" Click="CycleLyricsMode"
+                      ToolTip="Сменить режим текста">
+                <TextBlock Text="♪" Foreground="#FF3B5C" FontSize="14" FontWeight="Bold"/>
+              </Button>
+
+              <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Button Style="{StaticResource IconBtn}" Padding="8,4" Click="Prev" ToolTip="Предыдущий">
+                  <Path Data="M11,18V6l-8.5,6L11,18z M11.5,12l8.5,6V6L11.5,12z"
+                        Fill="White" Stretch="Uniform" Width="17" Height="13"/>
+                </Button>
+                <Button Style="{StaticResource IconBtn}" Padding="10,4" Click="PlayPause" ToolTip="Пауза / Воспроизведение">
+                  <Path x:Name="PlayPauseIconCorner" Data="M8,5v14l11-7L8,5z"
+                        Fill="White" Stretch="Uniform" Width="15" Height="16"/>
+                </Button>
+                <Button Style="{StaticResource IconBtn}" Padding="8,4" Click="Next" ToolTip="Следующий">
+                  <Path Data="M4,18l8.5-6L4,6V18z M13,6v12l8.5-6L13,6z"
+                        Fill="White" Stretch="Uniform" Width="17" Height="13"/>
+                </Button>
+              </StackPanel>
+
+              <Button x:Name="SourceStatusBtnCorner" Grid.Column="2" Style="{StaticResource IconBtn}" Padding="4" Click="OpenSettings"
+                      ToolTip="Источник медиа (настройки)">
+                <Border x:Name="SourceStatusDotCorner" Width="14" Height="14" CornerRadius="7" Background="#1DB954">
+                  <TextBlock Text="✓" Foreground="Black" FontSize="9" FontWeight="Bold"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+              </Button>
+            </Grid>
+          </Grid>
+        </Grid>
+      </Grid>
+
+      <!-- Expanded: Vertical Arm (Lyrics flowing down/up along the screen edge!) -->
+      <Grid x:Name="CornerFullVert" Width="244" Height="280" Opacity="0" IsHitTestVisible="False">
+        <Grid Margin="14,10,14,10">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <Border x:Name="CornerLyricsDividerTop" Grid.Row="0" Height="1" Background="#24FFFFFF" Margin="4,0,4,10"/>
+          <controls:LyricsView x:Name="CornerLyrics" Grid.Row="1" VerticalAlignment="Stretch"/>
+          <Border x:Name="CornerLyricsDividerBot" Grid.Row="2" Height="1" Background="#24FFFFFF" Margin="4,10,4,0" Visibility="Collapsed"/>
+        </Grid>
+      </Grid>
+    </Canvas>
+  </Grid>
+  </Grid>
 </Window>

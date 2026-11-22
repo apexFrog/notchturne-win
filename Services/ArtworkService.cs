@@ -315,4 +315,200 @@ public class ArtworkService
             return fallback;
         }
     }
+
+    /// <summary>
+    /// Extracts a multi-color vivid palette (up to 6 distinct colors) and average color from album art.
+    /// Uses 36 hue bins with 18° merging and vivid boost (inspired by spotify-lyrics).
+    /// </summary>
+    public static (List<Color> Palette, Color Average) ExtractCoverPalette(BitmapSource? source)
+    {
+        var fallback = new List<Color>
+        {
+            Color.FromRgb(68, 86, 150),
+            Color.FromRgb(120, 62, 138),
+            Color.FromRgb(42, 118, 146)
+        };
+        var fallbackAvg = Color.FromRgb(32, 36, 54);
+
+        if (source == null || source.PixelWidth <= 0 || source.PixelHeight <= 0)
+            return (fallback, fallbackAvg);
+
+        try
+        {
+            BitmapSource bmp = source.Format == PixelFormats.Bgra32
+                ? source
+                : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+
+            int w = bmp.PixelWidth;
+            int h = bmp.PixelHeight;
+            int stride = w * 4;
+            var pixels = new byte[h * stride];
+            bmp.CopyPixels(pixels, stride, 0);
+
+            // Sample center square (avoids black bars on non-square video thumbnails)
+            int sq = Math.Min(w, h);
+            int x0 = (w - sq) / 2;
+            int y0 = (h - sq) / 2;
+            int step = Math.Max(1, sq / 48);
+
+            const int hueBins = 36;
+            var hn = new double[hueBins];
+            var hr = new double[hueBins];
+            var hg = new double[hueBins];
+            var hb = new double[hueBins];
+            var hw = new double[hueBins];
+
+            double avgR = 0, avgG = 0, avgB = 0;
+            int total = 0;
+
+            for (int y = y0; y < y0 + sq; y += step)
+            {
+                int row = y * stride;
+                for (int x = x0; x < x0 + sq; x += step)
+                {
+                    int idx = row + x * 4;
+                    if (pixels[idx + 3] < 40) continue;
+
+                    double b = pixels[idx];
+                    double g = pixels[idx + 1];
+                    double r = pixels[idx + 2];
+
+                    avgR += r; avgG += g; avgB += b;
+                    total++;
+
+                    var (hue, sat, val) = RgbToHsv(r, g, b);
+                    if (sat >= 0.28 && val >= 0.20)
+                    {
+                        int bin = Math.Clamp((int)(hue / (360.0 / hueBins)), 0, hueBins - 1);
+                        double weight = Math.Pow(sat * val, 2);
+                        hn[bin]++;
+                        hr[bin] += r * weight;
+                        hg[bin] += g * weight;
+                        hb[bin] += b * weight;
+                        hw[bin] += weight;
+                    }
+                }
+            }
+
+            if (total == 0) return (fallback, fallbackAvg);
+
+            var avgColor = Color.FromRgb(
+                (byte)Math.Clamp(avgR / total, 0, 255),
+                (byte)Math.Clamp(avgG / total, 0, 255),
+                (byte)Math.Clamp(avgB / total, 0, 255));
+
+            // Group hue bins within 18 degrees
+            var order = Enumerable.Range(0, hueBins)
+                .Where(q => hn[q] > 0)
+                .OrderByDescending(q => hn[q])
+                .ToList();
+
+            double minSeed = Math.Max(3, total * 0.001);
+            var groups = new List<(double Hue, double N, double R, double G, double B, double W)>();
+
+            foreach (int q in order)
+            {
+                double hue = (q + 0.5) * (360.0 / hueBins);
+                int bestIdx = -1;
+                double bestDist = double.MaxValue;
+                for (int i = 0; i < groups.Count; i++)
+                {
+                    double d = Math.Abs(groups[i].Hue - hue) % 360.0;
+                    if (d > 180.0) d = 360.0 - d;
+                    if (d < bestDist) { bestDist = d; bestIdx = i; }
+                }
+
+                if (bestIdx >= 0 && bestDist < 18.0)
+                {
+                    var g = groups[bestIdx];
+                    groups[bestIdx] = (g.Hue, g.N + hn[q], g.R + hr[q], g.G + hg[q], g.B + hb[q], g.W + hw[q]);
+                }
+                else if (hn[q] >= minSeed)
+                {
+                    groups.Add((hue, hn[q], hr[q], hg[q], hb[q], hw[q]));
+                }
+            }
+
+            var palette = groups
+                .Where(g => g.W > 0.001)
+                .OrderByDescending(g => Math.Sqrt(g.N / total) * (0.6 + 0.4 * (g.W / g.N)))
+                .Take(6)
+                .Select(g => MakeVivid(g.R / g.W, g.G / g.W, g.B / g.W))
+                .ToList();
+
+            if (palette.Count == 0)
+            {
+                // Monochrome/neutral cover fallback: build 3 tasteful tinted tones from average
+                var (ah, asat, aval) = RgbToHsv(avgColor.R, avgColor.G, avgColor.B);
+                double baseV = Math.Clamp(aval, 0.32, 0.72);
+                palette.Add(HsvToColor(ah, Math.Max(asat, 0.14), baseV));
+                palette.Add(HsvToColor((ah + 28) % 360, Math.Max(asat * 0.9, 0.12), Math.Min(0.82, baseV + 0.14)));
+                palette.Add(HsvToColor((ah + 332) % 360, Math.Max(asat * 0.8, 0.10), Math.Max(0.24, baseV - 0.10)));
+            }
+            else if (palette.Count == 1)
+            {
+                var (h1, s1, v1) = RgbToHsv(palette[0].R, palette[0].G, palette[0].B);
+                palette.Add(HsvToColor((h1 + 32) % 360, Math.Min(1.0, s1 * 0.92), Math.Clamp(v1 * 0.88, 0.36, 0.92)));
+                palette.Add(HsvToColor((h1 + 328) % 360, Math.Min(1.0, s1 * 0.85), Math.Clamp(v1 * 0.78, 0.30, 0.86)));
+            }
+            else if (palette.Count == 2)
+            {
+                // Add a harmonic bridge color between the first two
+                palette.Add(Color.FromRgb(
+                    (byte)((palette[0].R + palette[1].R) / 2),
+                    (byte)((palette[0].G + palette[1].G) / 2),
+                    (byte)((palette[0].B + palette[1].B) / 2)));
+            }
+
+            return (palette, avgColor);
+        }
+        catch
+        {
+            return (fallback, fallbackAvg);
+        }
+    }
+
+    private static (double H, double S, double V) RgbToHsv(double r, double g, double b)
+    {
+        double mx = Math.Max(r, Math.Max(g, b));
+        double mn = Math.Min(r, Math.Min(g, b));
+        double d = mx - mn;
+        double h = 0;
+        if (d > 0)
+        {
+            if (mx == r) h = ((g - b) / d) % 6;
+            else if (mx == g) h = (b - r) / d + 2;
+            else h = (r - g) / d + 4;
+            h *= 60;
+            if (h < 0) h += 360;
+        }
+        double s = mx > 0 ? d / mx : 0;
+        double v = mx / 255.0;
+        return (h, s, v);
+    }
+
+    private static Color HsvToColor(double h, double s, double v)
+    {
+        h = ((h % 360) + 360) % 360;
+        double c = v * s;
+        double x = c * (1 - Math.Abs((h / 60.0) % 2 - 1));
+        double m = v - c;
+        double r = 0, g = 0, b = 0;
+        if (h < 60) { r = c; g = x; }
+        else if (h < 120) { r = x; g = c; }
+        else if (h < 180) { g = c; b = x; }
+        else if (h < 240) { g = x; b = c; }
+        else if (h < 300) { r = x; b = c; }
+        else { r = c; b = x; }
+        return Color.FromRgb(
+            (byte)Math.Clamp((r + m) * 255, 0, 255),
+            (byte)Math.Clamp((g + m) * 255, 0, 255),
+            (byte)Math.Clamp((b + m) * 255, 0, 255));
+    }
+
+    private static Color MakeVivid(double r, double g, double b)
+    {
+        var (h, s, v) = RgbToHsv(r, g, b);
+        return HsvToColor(h, Math.Min(1.0, s * 1.18), Math.Max(v, 0.42));
+    }
 }
