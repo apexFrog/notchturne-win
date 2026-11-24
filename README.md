@@ -11,6 +11,10 @@
 [![.NET 8](https://img.shields.io/badge/.NET-8.0%20WPF-512BD4?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?style=for-the-badge&logo=windows11)](#требования)
 
+<br>
+
+<img src="assets/demo.gif" alt="NotchturneWin Demo — Go by The Chemical Brothers" width="100%" />
+
 ---
 
 ### Быстрая загрузка
