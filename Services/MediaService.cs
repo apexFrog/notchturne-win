@@ -251,9 +251,9 @@ public class MediaService
         return t;
     }
 
-    public void Previous() => _ = _activeSession?.TrySkipPreviousAsync();
-    public void PlayPause() => _ = _activeSession?.TryTogglePlayPauseAsync();
-    public void Next() => _ = _activeSession?.TrySkipNextAsync();
+    public void Previous() { try { _ = _activeSession?.TrySkipPreviousAsync(); } catch { } }
+    public void PlayPause() { try { _ = _activeSession?.TryTogglePlayPauseAsync(); } catch { } }
+    public void Next() { try { _ = _activeSession?.TrySkipNextAsync(); } catch { } }
 
     public void SeekRatio(double ratio)
     {
@@ -269,7 +269,7 @@ public class MediaService
         if (target > _dur) target = _dur;
         _pos = target;
         _posAt = DateTimeOffset.Now;
-        _ = _activeSession.TryChangePlaybackPositionAsync(target.Ticks);
+        try { _ = _activeSession.TryChangePlaybackPositionAsync(target.Ticks); } catch { }
     }
 
     public static MediaAppInfo DescribeApp(string appId)

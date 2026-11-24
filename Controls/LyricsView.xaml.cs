@@ -260,7 +260,8 @@ public partial class LyricsView : UserControl
                 tb.MouseLeftButtonUp += (_, _) =>
                 {
                     _manualScrollUntil = DateTime.MinValue;
-                    LineClicked?.Invoke(_synced[idx].TimeSeconds);
+                    if (idx >= 0 && idx < _synced.Count)
+                        LineClicked?.Invoke(_synced[idx].TimeSeconds);
                 };
                 _lineBlocks.Add(tb);
                 LinesPanel.Children.Add(tb);
@@ -445,7 +446,11 @@ public partial class LyricsView : UserControl
             if (_compact && activeIndex < _synced.Count)
             {
                 int clickIdx = activeIndex;
-                _lockedActiveBlock.MouseLeftButtonUp += (_, _) => LineClicked?.Invoke(_synced[clickIdx].TimeSeconds);
+                _lockedActiveBlock.MouseLeftButtonUp += (_, _) =>
+                {
+                    if (clickIdx >= 0 && clickIdx < _synced.Count)
+                        LineClicked?.Invoke(_synced[clickIdx].TimeSeconds);
+                };
             }
             if (animateSlide)
             {
@@ -500,7 +505,11 @@ public partial class LyricsView : UserControl
         };
 
         if (_compact)
-            tb.MouseLeftButtonUp += (_, _) => LineClicked?.Invoke(_synced[lineIdx].TimeSeconds);
+            tb.MouseLeftButtonUp += (_, _) =>
+            {
+                if (lineIdx >= 0 && lineIdx < _synced.Count)
+                    LineClicked?.Invoke(_synced[lineIdx].TimeSeconds);
+            };
 
         if (animate)
         {

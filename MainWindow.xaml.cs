@@ -1635,6 +1635,15 @@ public partial class MainWindow : Window
         return (clampedX, clampedY, NotchDockEdge.Floating);
     }
 
+    private static DependencyObject? GetVisualOrLogicalParent(DependencyObject dep)
+    {
+        if (dep is Visual or System.Windows.Media.Media3D.Visual3D)
+            return VisualTreeHelper.GetParent(dep);
+        if (dep is ContentElement ce)
+            return ContentOperations.GetParent(ce) ?? LogicalTreeHelper.GetParent(ce);
+        return LogicalTreeHelper.GetParent(dep);
+    }
+
     private void NotchShell_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (!_settings.AllowNotchDrag) return;
@@ -1649,7 +1658,7 @@ public partial class MainWindow : Window
                 or System.Windows.Controls.Primitives.ScrollBar)
                 return;
             if (dep == SeekTrack || dep == SeekTrackVert || dep == SeekTrackCorner) return;
-            dep = VisualTreeHelper.GetParent(dep);
+            dep = GetVisualOrLogicalParent(dep);
         }
 
         var rect = GetNotchScreenRect();
