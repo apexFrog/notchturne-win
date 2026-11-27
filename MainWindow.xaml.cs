@@ -83,7 +83,20 @@ public partial class MainWindow : Window
     private double _cornerCurW = 284, _cornerCurH = 158, _cornerCurArmW = 58, _cornerCurArmH = 42;
     private double _cornerTgtW = 284, _cornerTgtH = 158, _cornerTgtArmW = 58, _cornerTgtArmH = 42;
 
+    // Clock, multi-style calendar live clock refs, mascot blink & fullscreen auto-hide
+    private readonly DispatcherTimer _clockTimer;
+    private readonly DispatcherTimer _fullscreenTimer;
+    private readonly List<TextBlock> _calClockBlocks = new();
+    private IntPtr _hwnd;
+    private bool _hiddenForFullscreen;
+    private string _lastClockText = "";
+    private long _nextMascotBlinkTicks;
+
     private bool IsEn => string.Equals(_settings.Language, "en", StringComparison.OrdinalIgnoreCase);
+    private bool HasActiveTrack => _currentTrack is { HasSession: true } && !string.IsNullOrWhiteSpace(_currentTrack.Title);
+    private bool IsIdleClockPillMode => _settings.ShowClock && !HasActiveTrack;
+    private bool IsFloatingPillStyle => _settings.NotchStyle is NotchStyle.DynamicPill or NotchStyle.Glow;
+    private double GetStyleDockInset() => IsFloatingPillStyle ? 10.0 : 0.0;
     private static bool IsCornerEdge(NotchDockEdge e) =>
         e is NotchDockEdge.CornerTopLeft or NotchDockEdge.CornerTopRight
           or NotchDockEdge.CornerBottomLeft or NotchDockEdge.CornerBottomRight;
@@ -138,15 +151,27 @@ public partial class MainWindow : Window
 
         ApplySettings(initial: true);
         BuildCalendar(DateTime.Today);
+        UpdateClockDisplay(force: true);
         RebuildClips();
 
         ApplyDockShape(_dockEdge);
         UpdateLayoutOrientation();
         PositionWindowToAnchor(animate: false);
 
+        _nextMascotBlinkTicks = DateTime.UtcNow.AddSeconds(4).Ticks;
+        _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _clockTimer.Tick += (_, _) => OnClockTick();
+        _clockTimer.Start();
+
+        _fullscreenTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        _fullscreenTimer.Tick += (_, _) => CheckFullscreenState();
+        _fullscreenTimer.Start();
+
         Loaded += async (_, _) => await _media.InitializeAsync();
         Closed += (_, _) =>
         {
+            _clockTimer.Stop();
+            _fullscreenTimer.Stop();
             CompositionTarget.Rendering -= OnRenderFrame;
             _floatingWindow?.Close();
         };
@@ -160,6 +185,7 @@ public partial class MainWindow : Window
     {
         base.OnSourceInitialized(e);
         var h = new WindowInteropHelper(this).Handle;
+        _hwnd = h;
         SetWindowLong(h, GWL_EXSTYLE, GetWindowLong(h, GWL_EXSTYLE) | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
         AddClipboardFormatListener(h);
         HwndSource.FromHwnd(h).AddHook((IntPtr hw, int msg, IntPtr w, IntPtr l, ref bool handled) =>
@@ -189,14 +215,69 @@ public partial class MainWindow : Window
 
     private double GetCollapsedWidth()
     {
-        if (IsSideVerticalMode) return 54;
-        return IsMiniLyricsActive() ? 360 : 250;
+        if (IsSideVerticalMode)
+            return _settings.NotchStyle == NotchStyle.Compact ? 48 : 54;
+
+        if (IsIdleClockPillMode)
+        {
+            double secExtra = _settings.ShowClockSeconds ? 20 : 0;
+            if (!_settings.ShowMiniDate)
+                return (_settings.NotchStyle == NotchStyle.Compact ? 168 : 196) + secExtra;
+
+            return _settings.NotchStyle switch
+            {
+                NotchStyle.Compact => 282 + secExtra,
+                NotchStyle.DynamicPill or NotchStyle.Glow => 332 + secExtra,
+                _ => 312 + secExtra
+            };
+        }
+
+        double baseW = IsMiniLyricsActive()
+            ? (_settings.NotchStyle == NotchStyle.Compact ? 330 : 364)
+            : _settings.NotchStyle switch
+            {
+                NotchStyle.Compact => 224,
+                NotchStyle.DynamicPill or NotchStyle.Glow => 268,
+                _ => 250
+            };
+
+        if (_settings.ShowClock && HasActiveTrack)
+            baseW += _settings.ShowClockSeconds ? 66 : 48;
+
+        return baseW;
     }
 
     private double GetCollapsedHeight()
     {
-        if (IsSideVerticalMode) return 190;
-        return IsMiniTwoLine() ? 52 : 34;
+        if (IsSideVerticalMode)
+            return _settings.ShowClock ? 208 : 190;
+
+        if (IsMiniTwoLine() && !IsIdleClockPillMode)
+        {
+            return _settings.NotchStyle switch
+            {
+                NotchStyle.Compact => 46,
+                NotchStyle.DynamicPill or NotchStyle.Glow => 54,
+                _ => 52
+            };
+        }
+
+        if (IsIdleClockPillMode)
+        {
+            return _settings.NotchStyle switch
+            {
+                NotchStyle.Compact => 30,
+                NotchStyle.DynamicPill or NotchStyle.Glow => 42,
+                _ => 36
+            };
+        }
+
+        return _settings.NotchStyle switch
+        {
+            NotchStyle.Compact => 26,
+            NotchStyle.DynamicPill or NotchStyle.Glow => 38,
+            _ => 34
+        };
     }
 
     private bool HasAnySideBottomPanel() =>
@@ -408,6 +489,7 @@ public partial class MainWindow : Window
         bool corner = IsCornerMode && !_inSettings;
         bool vert = IsSideVerticalMode;
 
+        NotchGroup.Visibility = corner ? Visibility.Collapsed : Visibility.Visible;
         NotchShell.Visibility = corner ? Visibility.Collapsed : Visibility.Visible;
         CornerShell.Visibility = corner ? Visibility.Visible : Visibility.Collapsed;
 
@@ -660,10 +742,15 @@ public partial class MainWindow : Window
         }
 
         UpdateWindowDimensionsForDock();
+        ApplyDockShape(_dockEdge);
         UpdateLayoutOrientation();
+        UpdateMiniViewMode();
         ApplyNotchBackground();
         ApplyLocalization();
         SyncInlineSettingsControls();
+        UpdateClockDisplay(force: true);
+        if (!_settings.HideInFullscreen && _hiddenForFullscreen)
+            SetHiddenForFullscreen(false);
 
         if (showFloating)
         {
@@ -698,6 +785,7 @@ public partial class MainWindow : Window
         {
             NotchShell.Width = GetCollapsedWidth();
             NotchShell.Height = GetCollapsedHeight();
+            Mini.Height = GetCollapsedHeight();
         }
     }
 
@@ -705,10 +793,12 @@ public partial class MainWindow : Window
     {
         bool en = IsEn;
         CtxSettings.Header = en ? "Settings…" : "Настройки…";
+        CtxCycleStyle.Header = en ? "Switch cloud style" : "Сменить вид облака";
         CtxCycleMode.Header = en ? "Switch lyrics mode" : "Сменить режим текста";
         CtxResetPos.Header = en ? "Reset position (top center)" : "Сбросить позицию (вверх по центру)";
         CtxQuit.Header = en ? "Quit" : "Выход";
         CtxCornerSettings.Header = CtxSettings.Header;
+        CtxCornerCycleStyle.Header = CtxCycleStyle.Header;
         CtxCornerCycleMode.Header = CtxCycleMode.Header;
         CtxCornerResetPos.Header = CtxResetPos.Header;
         CtxCornerQuit.Header = CtxQuit.Header;
@@ -717,10 +807,25 @@ public partial class MainWindow : Window
         LblSecShow.Text = en ? "WHAT TO SHOW" : "ЧТО ПОКАЗЫВАТЬ";
         LblShowLyrics.Text = en ? "Lyrics" : "Текст песни";
         LblShowCal.Text = en ? "Calendar" : "Календарь";
+        LblCalStyle.Text = en ? "Calendar style" : "Стиль календаря";
+        BtnCalClassic.Content = en ? "Grid" : "Сетка";
+        BtnCalCard.Content = en ? "Card" : "Карточка";
+        BtnCalWeek.Content = en ? "Week" : "Неделя";
+        BtnCalMinimal.Content = en ? "Minimal" : "Минимал";
+        LblShowClock.Text = en ? "Show clock" : "Показывать время";
+        LblClockSeconds.Text = en ? "Show seconds" : "Секунды на часах";
+        LblMiniDate.Text = en ? "Date in collapsed cloud" : "Дата в свёрнутом облаке";
+        LblHideFullscreen.Text = en ? "Hide in fullscreen apps" : "Скрывать в полном экране";
         LblShowClip.Text = en ? "Clipboard" : "Буфер обмена";
         LblHdArt.Text = en ? "Look up artwork online" : "HD-обложки (Apple Music)";
         LblClipCount.Text = en ? "Clipboard entries" : "Записей в буфере";
         LblLang.Text = en ? "Language" : "Язык";
+        LblNotchStyle.Text = en ? "Cloud style" : "Вид облака";
+        BtnStyleNotch.Content = en ? "Notch" : "Вырез";
+        BtnStylePill.Content = en ? "Pill" : "Капсула";
+        BtnStyleMac.Content = "MacBook";
+        BtnStyleCompact.Content = en ? "Compact" : "Компакт";
+        BtnStyleGlow.Content = en ? "Glow" : "Неон";
         LblBgMode.Text = en ? "Notch background" : "Фон острова";
         BtnBgBlack.Content = en ? "Black" : "Чёрный";
         BtnBgGlass.Content = en ? "Glass" : "Стекло";
@@ -807,6 +912,10 @@ public partial class MainWindow : Window
         _syncingUi = true;
         SwLyrics.IsChecked = _settings.ShowLyrics;
         SwCalendar.IsChecked = _settings.ShowCalendar;
+        SwShowClock.IsChecked = _settings.ShowClock;
+        SwClockSeconds.IsChecked = _settings.ShowClockSeconds;
+        SwMiniDate.IsChecked = _settings.ShowMiniDate;
+        SwHideFullscreen.IsChecked = _settings.HideInFullscreen;
         SwClipboard.IsChecked = _settings.ShowClipboard;
         SwHdArt.IsChecked = _settings.UseAppleMusicHdCover;
         SwCoverShimmer.IsChecked = _settings.CoverShimmerEnabled;
@@ -817,6 +926,24 @@ public partial class MainWindow : Window
         SwMiniLyrics.IsChecked = _settings.ShowLyricsInMiniNotch;
         SwClickThrough.IsChecked = _settings.FloatingClickThrough;
         SwIgnoreBrowsers.IsChecked = _settings.IgnoreBrowsers;
+
+        CalStyleRow.Visibility = _settings.ShowCalendar ? Visibility.Visible : Visibility.Collapsed;
+        CalStyleSep.Visibility = _settings.ShowCalendar ? Visibility.Visible : Visibility.Collapsed;
+        SetPill(BtnCalClassic, _settings.CalendarStyle == CalendarStyle.Classic);
+        SetPill(BtnCalCard, _settings.CalendarStyle == CalendarStyle.Card);
+        SetPill(BtnCalWeek, _settings.CalendarStyle == CalendarStyle.WeekStrip);
+        SetPill(BtnCalMinimal, _settings.CalendarStyle == CalendarStyle.Minimal);
+
+        ClockSecRow.Visibility = _settings.ShowClock ? Visibility.Visible : Visibility.Collapsed;
+        ClockSecSep.Visibility = _settings.ShowClock ? Visibility.Visible : Visibility.Collapsed;
+        MiniDateRow.Visibility = _settings.ShowClock ? Visibility.Visible : Visibility.Collapsed;
+        MiniDateSep.Visibility = _settings.ShowClock ? Visibility.Visible : Visibility.Collapsed;
+
+        SetPill(BtnStyleNotch, _settings.NotchStyle == NotchStyle.Notch);
+        SetPill(BtnStylePill, _settings.NotchStyle == NotchStyle.DynamicPill);
+        SetPill(BtnStyleMac, _settings.NotchStyle == NotchStyle.MacNotch);
+        SetPill(BtnStyleCompact, _settings.NotchStyle == NotchStyle.Compact);
+        SetPill(BtnStyleGlow, _settings.NotchStyle == NotchStyle.Glow);
 
         SetPill(BtnProgRing, _settings.SideProgressStyle == SideProgressStyle.Ring);
         SetPill(BtnProgBar, _settings.SideProgressStyle == SideProgressStyle.Bar);
@@ -906,8 +1033,13 @@ public partial class MainWindow : Window
         if (IsCornerMode)
         {
             CornerShell.Visibility = Visibility.Collapsed;
+            NotchGroup.Visibility = Visibility.Visible;
             NotchShell.Visibility = Visibility.Visible;
             ApplyDockShape(_dockEdge);
+        }
+        else
+        {
+            ApplyDockCorners(_dockEdge);
         }
 
         SettingsView.Visibility = Visibility.Visible;
@@ -965,6 +1097,10 @@ public partial class MainWindow : Window
 
         _settings.ShowLyrics = SwLyrics.IsChecked == true;
         _settings.ShowCalendar = SwCalendar.IsChecked == true;
+        _settings.ShowClock = SwShowClock.IsChecked == true;
+        _settings.ShowClockSeconds = SwClockSeconds.IsChecked == true;
+        _settings.ShowMiniDate = SwMiniDate.IsChecked == true;
+        _settings.HideInFullscreen = SwHideFullscreen.IsChecked == true;
         _settings.ShowClipboard = SwClipboard.IsChecked == true;
         _settings.UseAppleMusicHdCover = SwHdArt.IsChecked == true;
         _settings.CoverShimmerEnabled = SwCoverShimmer.IsChecked == true;
@@ -999,6 +1135,25 @@ public partial class MainWindow : Window
 
     private void OnLangRu(object s, RoutedEventArgs e) { _settings.Language = "ru"; SaveAndApply(); RebuildInlineApps(); }
     private void OnLangEn(object s, RoutedEventArgs e) { _settings.Language = "en"; SaveAndApply(); RebuildInlineApps(); }
+
+    private void OnStyleNotch(object s, RoutedEventArgs e) { _settings.NotchStyle = NotchStyle.Notch; SaveAndApply(); }
+    private void OnStylePill(object s, RoutedEventArgs e) { _settings.NotchStyle = NotchStyle.DynamicPill; SaveAndApply(); }
+    private void OnStyleMac(object s, RoutedEventArgs e) { _settings.NotchStyle = NotchStyle.MacNotch; SaveAndApply(); }
+    private void OnStyleCompact(object s, RoutedEventArgs e) { _settings.NotchStyle = NotchStyle.Compact; SaveAndApply(); }
+    private void OnStyleGlow(object s, RoutedEventArgs e) { _settings.NotchStyle = NotchStyle.Glow; SaveAndApply(); }
+
+    private void CycleNotchStyle(object sender, RoutedEventArgs e)
+    {
+        var values = Enum.GetValues<NotchStyle>();
+        int next = ((int)_settings.NotchStyle + 1) % values.Length;
+        _settings.NotchStyle = values[next];
+        SaveAndApply();
+    }
+
+    private void OnCalClassic(object s, RoutedEventArgs e) { _settings.CalendarStyle = CalendarStyle.Classic; SaveAndApply(); }
+    private void OnCalCard(object s, RoutedEventArgs e) { _settings.CalendarStyle = CalendarStyle.Card; SaveAndApply(); }
+    private void OnCalWeek(object s, RoutedEventArgs e) { _settings.CalendarStyle = CalendarStyle.WeekStrip; SaveAndApply(); }
+    private void OnCalMinimal(object s, RoutedEventArgs e) { _settings.CalendarStyle = CalendarStyle.Minimal; SaveAndApply(); }
 
     private void OnBgBlack(object s, RoutedEventArgs e) { _settings.NotchBackground = NotchBackgroundMode.Black; SaveAndApply(); }
     private void OnBgGlass(object s, RoutedEventArgs e) { _settings.NotchBackground = NotchBackgroundMode.Glass; SaveAndApply(); }
@@ -1153,6 +1308,63 @@ public partial class MainWindow : Window
         NotchShimmer.StyleMode = _settings.CoverShimmerStyle;
         NotchShimmer.Visibility = shimmer ? Visibility.Visible : Visibility.Collapsed;
         NotchShimmer.InvalidateVisual();
+
+        // Sync concave MacNotch ears with the notch shell's top background color
+        Brush earBrush = _settings.NotchBackground switch
+        {
+            NotchBackgroundMode.Glass => new SolidColorBrush(Color.FromArgb(208, 18, 18, 24)),
+            NotchBackgroundMode.CoverGlass => new SolidColorBrush(Color.FromArgb(196, 14, 14, 20)),
+            _ => new SolidColorBrush(Color.FromRgb(0, 0, 0))
+        };
+        NotchEarLeft.Fill = earBrush;
+        NotchEarRight.Fill = earBrush;
+
+        // Style-specific visual accents (DynamicPill rim & Glow neon aura)
+        if (_settings.NotchStyle == NotchStyle.Glow)
+        {
+            Color neon = HasActiveTrack
+                ? Color.FromRgb(
+                    (byte)Math.Clamp(c.R * 0.72 + 78, 70, 255),
+                    (byte)Math.Clamp(c.G * 0.72 + 78, 70, 255),
+                    (byte)Math.Clamp(c.B * 0.72 + 78, 70, 255))
+                : Color.FromRgb(118, 152, 255);
+
+            NotchShell.BorderBrush = new LinearGradientBrush(
+                Color.FromArgb(210, neon.R, neon.G, neon.B),
+                Color.FromArgb(95, neon.R, neon.G, neon.B),
+                45);
+            NotchNeonRim.BorderBrush = new LinearGradientBrush(
+                Color.FromArgb(95, neon.R, neon.G, neon.B),
+                Color.FromArgb(30, neon.R, neon.G, neon.B),
+                90);
+            NotchNeonRim.CornerRadius = NotchShell.CornerRadius;
+            NotchNeonRim.Visibility = Visibility.Visible;
+
+            if (!shimmer && _settings.NotchBackground == NotchBackgroundMode.Black)
+            {
+                NotchGlowLayer.Background = new RadialGradientBrush
+                {
+                    GradientOrigin = new Point(0.5, 0.0),
+                    Center = new Point(0.5, 0.0),
+                    RadiusX = 0.85,
+                    RadiusY = 1.2,
+                    GradientStops = new GradientStopCollection
+                    {
+                        new(Color.FromArgb(52, neon.R, neon.G, neon.B), 0.0),
+                        new(Color.FromArgb(0, neon.R, neon.G, neon.B), 1.0)
+                    }
+                };
+                NotchGlowLayer.Visibility = Visibility.Visible;
+            }
+        }
+        else
+        {
+            NotchNeonRim.Visibility = Visibility.Collapsed;
+            if (_settings.NotchStyle == NotchStyle.DynamicPill && _settings.NotchBackground == NotchBackgroundMode.Black)
+            {
+                NotchShell.BorderBrush = new SolidColorBrush(Color.FromArgb(46, 255, 255, 255));
+            }
+        }
 
         // Sync CornerShell background, glow & shimmer identically
         CornerBgPath.Fill = NotchShell.Background;
@@ -1324,23 +1536,25 @@ public partial class MainWindow : Window
 
     // ---------- Smooth Dragging & Magnetic Edge Docking ----------
     private FrameworkElement ActiveShellElement => (IsCornerMode && !_inSettings) ? CornerShell : NotchShell;
+    private FrameworkElement ActiveAlignElement => (IsCornerMode && !_inSettings) ? CornerShell : NotchGroup;
 
     private (double X, double Y, double W, double H) GetNotchScreenRect()
     {
         var el = ActiveShellElement;
+        var alignEl = ActiveAlignElement;
         double w = el.ActualWidth > 0 ? el.ActualWidth : el.Width;
         double h = el.ActualHeight > 0 ? el.ActualHeight : el.Height;
         double winW = ActualWidth > 0 ? ActualWidth : Width;
         double winH = ActualHeight > 0 ? ActualHeight : Height;
 
-        double x = el.HorizontalAlignment switch
+        double x = alignEl.HorizontalAlignment switch
         {
             HorizontalAlignment.Left => Left,
             HorizontalAlignment.Right => Left + winW - w,
             _ => Left + (winW - w) / 2.0
         };
 
-        double y = el.VerticalAlignment switch
+        double y = alignEl.VerticalAlignment switch
         {
             VerticalAlignment.Top => Top,
             VerticalAlignment.Bottom => Top + winH - h,
@@ -1352,18 +1566,18 @@ public partial class MainWindow : Window
 
     private (double WinLeft, double WinTop) ComputeWindowCoordsForShell(double shellX, double shellY, double shellW, double shellH)
     {
-        var el = ActiveShellElement;
+        var alignEl = ActiveAlignElement;
         double winW = ActualWidth > 0 ? ActualWidth : Width;
         double winH = ActualHeight > 0 ? ActualHeight : Height;
 
-        double winLeft = el.HorizontalAlignment switch
+        double winLeft = alignEl.HorizontalAlignment switch
         {
             HorizontalAlignment.Left => shellX,
             HorizontalAlignment.Right => shellX + shellW - winW,
             _ => shellX + shellW / 2.0 - winW / 2.0
         };
 
-        double winTop = el.VerticalAlignment switch
+        double winTop = alignEl.VerticalAlignment switch
         {
             VerticalAlignment.Top => shellY,
             VerticalAlignment.Bottom => shellY + shellH - winH,
@@ -1385,45 +1599,84 @@ public partial class MainWindow : Window
 
     private void ApplyDockCorners(NotchDockEdge edge)
     {
+        bool showEars = _settings.NotchStyle == NotchStyle.MacNotch
+            && edge is NotchDockEdge.Top or NotchDockEdge.Bottom;
+
+        if (showEars)
+        {
+            bool bottom = edge == NotchDockEdge.Bottom;
+            NotchEarLeft.Visibility = Visibility.Visible;
+            NotchEarRight.Visibility = Visibility.Visible;
+            NotchEarLeft.VerticalAlignment = bottom ? VerticalAlignment.Bottom : VerticalAlignment.Top;
+            NotchEarRight.VerticalAlignment = bottom ? VerticalAlignment.Bottom : VerticalAlignment.Top;
+            NotchEarLeftFlip.ScaleY = bottom ? -1 : 1;
+            NotchEarRightFlip.ScaleY = bottom ? -1 : 1;
+        }
+        else
+        {
+            NotchEarLeft.Visibility = Visibility.Collapsed;
+            NotchEarRight.Visibility = Visibility.Collapsed;
+        }
+
+        if (IsFloatingPillStyle)
+        {
+            double pillR = _open
+                ? 28.0
+                : (IsSideVerticalMode ? Math.Round(GetCollapsedWidth() / 2.0) : Math.Round(GetCollapsedHeight() / 2.0));
+            NotchShell.CornerRadius = new CornerRadius(pillR);
+            NotchShell.BorderThickness = new Thickness(_settings.NotchStyle == NotchStyle.Glow ? 1.5 : 1);
+            NotchNeonRim.CornerRadius = NotchShell.CornerRadius;
+            UpdateNotchBgClip();
+            return;
+        }
+
+        double r = _settings.NotchStyle switch
+        {
+            NotchStyle.Compact => _open ? 22.0 : 14.0,
+            NotchStyle.MacNotch => _open ? 24.0 : 19.0,
+            _ => 26.0
+        };
+
         switch (edge)
         {
             case NotchDockEdge.Top:
-                NotchShell.CornerRadius = new CornerRadius(0, 0, 26, 26);
-                NotchShell.BorderThickness = new Thickness(1, 0, 1, 1);
+                NotchShell.CornerRadius = new CornerRadius(0, 0, r, r);
+                NotchShell.BorderThickness = showEars ? new Thickness(0, 0, 0, 1) : new Thickness(1, 0, 1, 1);
                 break;
             case NotchDockEdge.Bottom:
-                NotchShell.CornerRadius = new CornerRadius(26, 26, 0, 0);
-                NotchShell.BorderThickness = new Thickness(1, 1, 1, 0);
+                NotchShell.CornerRadius = new CornerRadius(r, r, 0, 0);
+                NotchShell.BorderThickness = showEars ? new Thickness(0, 1, 0, 0) : new Thickness(1, 1, 1, 0);
                 break;
             case NotchDockEdge.Left:
-                NotchShell.CornerRadius = new CornerRadius(0, 26, 26, 0);
+                NotchShell.CornerRadius = new CornerRadius(0, r, r, 0);
                 NotchShell.BorderThickness = new Thickness(0, 1, 1, 1);
                 break;
             case NotchDockEdge.Right:
-                NotchShell.CornerRadius = new CornerRadius(26, 0, 0, 26);
+                NotchShell.CornerRadius = new CornerRadius(r, 0, 0, r);
                 NotchShell.BorderThickness = new Thickness(1, 1, 0, 1);
                 break;
             case NotchDockEdge.CornerTopLeft:
-                NotchShell.CornerRadius = new CornerRadius(0, 0, 26, 0);
+                NotchShell.CornerRadius = new CornerRadius(0, 0, r, 0);
                 NotchShell.BorderThickness = new Thickness(0, 0, 1, 1);
                 break;
             case NotchDockEdge.CornerTopRight:
-                NotchShell.CornerRadius = new CornerRadius(0, 0, 0, 26);
+                NotchShell.CornerRadius = new CornerRadius(0, 0, 0, r);
                 NotchShell.BorderThickness = new Thickness(1, 0, 0, 1);
                 break;
             case NotchDockEdge.CornerBottomLeft:
-                NotchShell.CornerRadius = new CornerRadius(0, 26, 0, 0);
+                NotchShell.CornerRadius = new CornerRadius(0, r, 0, 0);
                 NotchShell.BorderThickness = new Thickness(0, 1, 1, 0);
                 break;
             case NotchDockEdge.CornerBottomRight:
-                NotchShell.CornerRadius = new CornerRadius(26, 0, 0, 0);
+                NotchShell.CornerRadius = new CornerRadius(r, 0, 0, 0);
                 NotchShell.BorderThickness = new Thickness(1, 1, 0, 0);
                 break;
             default: // Floating
-                NotchShell.CornerRadius = new CornerRadius(26);
+                NotchShell.CornerRadius = new CornerRadius(r);
                 NotchShell.BorderThickness = new Thickness(1);
                 break;
         }
+        NotchNeonRim.CornerRadius = NotchShell.CornerRadius;
         UpdateNotchBgClip();
     }
 
@@ -1431,19 +1684,24 @@ public partial class MainWindow : Window
     {
         ApplyDockCorners(edge);
 
-        NotchShell.HorizontalAlignment = edge switch
+        var hAlign = edge switch
         {
             NotchDockEdge.Left or NotchDockEdge.CornerTopLeft or NotchDockEdge.CornerBottomLeft => HorizontalAlignment.Left,
             NotchDockEdge.Right or NotchDockEdge.CornerTopRight or NotchDockEdge.CornerBottomRight => HorizontalAlignment.Right,
             _ => HorizontalAlignment.Center
         };
 
-        NotchShell.VerticalAlignment = edge switch
+        var vAlign = edge switch
         {
             NotchDockEdge.Top or NotchDockEdge.CornerTopLeft or NotchDockEdge.CornerTopRight => VerticalAlignment.Top,
             NotchDockEdge.Bottom or NotchDockEdge.CornerBottomLeft or NotchDockEdge.CornerBottomRight => VerticalAlignment.Bottom,
             _ => VerticalAlignment.Center
         };
+
+        NotchGroup.HorizontalAlignment = hAlign;
+        NotchGroup.VerticalAlignment = vAlign;
+        NotchShell.HorizontalAlignment = hAlign;
+        NotchShell.VerticalAlignment = vAlign;
 
         Full.RenderTransformOrigin = edge switch
         {
@@ -1484,49 +1742,50 @@ public partial class MainWindow : Window
 
         double w = _open ? GetExpandedWidth() : GetCollapsedWidth();
         double h = _open ? GetExpandedHeight() : GetCollapsedHeight();
+        double inset = GetStyleDockInset();
 
         double shellX, shellY;
         switch (_dockEdge)
         {
             case NotchDockEdge.Top:
                 shellX = _hasCustomAnchor
-                    ? Math.Clamp(_anchorShellX, 0, Math.Max(0, screenW - w))
+                    ? Math.Clamp(_anchorShellX, inset, Math.Max(inset, screenW - w - inset))
                     : (screenW - w) / 2.0;
-                shellY = 0;
+                shellY = inset;
                 break;
 
             case NotchDockEdge.Bottom:
                 shellX = _hasCustomAnchor
-                    ? Math.Clamp(_anchorShellX, 0, Math.Max(0, screenW - w))
+                    ? Math.Clamp(_anchorShellX, inset, Math.Max(inset, screenW - w - inset))
                     : (screenW - w) / 2.0;
-                shellY = Math.Max(0, workBottom - h);
+                shellY = Math.Max(0, workBottom - h - inset);
                 break;
 
             case NotchDockEdge.Left:
-                shellX = 0;
+                shellX = inset;
                 shellY = _hasCustomAnchor
-                    ? Math.Clamp(_anchorShellY, 0, Math.Max(0, workBottom - h))
+                    ? Math.Clamp(_anchorShellY, inset, Math.Max(inset, workBottom - h - inset))
                     : (workBottom - h) / 2.0;
                 break;
 
             case NotchDockEdge.Right:
-                shellX = Math.Max(0, screenW - w);
+                shellX = Math.Max(0, screenW - w - inset);
                 shellY = _hasCustomAnchor
-                    ? Math.Clamp(_anchorShellY, 0, Math.Max(0, workBottom - h))
+                    ? Math.Clamp(_anchorShellY, inset, Math.Max(inset, workBottom - h - inset))
                     : (workBottom - h) / 2.0;
                 break;
 
             case NotchDockEdge.CornerTopLeft:
-                shellX = 0; shellY = 0;
+                shellX = inset; shellY = inset;
                 break;
             case NotchDockEdge.CornerTopRight:
-                shellX = Math.Max(0, screenW - w); shellY = 0;
+                shellX = Math.Max(0, screenW - w - inset); shellY = inset;
                 break;
             case NotchDockEdge.CornerBottomLeft:
-                shellX = 0; shellY = Math.Max(0, workBottom - h);
+                shellX = inset; shellY = Math.Max(0, workBottom - h - inset);
                 break;
             case NotchDockEdge.CornerBottomRight:
-                shellX = Math.Max(0, screenW - w); shellY = Math.Max(0, workBottom - h);
+                shellX = Math.Max(0, screenW - w - inset); shellY = Math.Max(0, workBottom - h - inset);
                 break;
 
             default: // Floating
@@ -1608,6 +1867,7 @@ public partial class MainWindow : Window
             if (nearBot && nearLeft) return (0, Math.Max(0, workBottom - h), NotchDockEdge.CornerBottomLeft);
         }
 
+        double inset = GetStyleDockInset();
         double minDist = Math.Min(Math.Min(distTop, distBottom), Math.Min(distLeft, distRight));
         if (minDist <= edgeSnap)
         {
@@ -1616,20 +1876,20 @@ public partial class MainWindow : Window
                 double sx = Math.Abs((clampedX + w / 2.0) - screenW / 2.0) <= centerSnap
                     ? (screenW - w) / 2.0
                     : clampedX;
-                return (sx, 0, NotchDockEdge.Top);
+                return (sx, inset, NotchDockEdge.Top);
             }
             if (minDist == distBottom)
             {
                 double sx = Math.Abs((clampedX + w / 2.0) - screenW / 2.0) <= centerSnap
                     ? (screenW - w) / 2.0
                     : clampedX;
-                return (sx, Math.Max(0, workBottom - h), NotchDockEdge.Bottom);
+                return (sx, Math.Max(0, workBottom - h - inset), NotchDockEdge.Bottom);
             }
             if (minDist == distLeft)
             {
-                return (0, clampedY, NotchDockEdge.Left);
+                return (inset, clampedY, NotchDockEdge.Left);
             }
-            return (Math.Max(0, screenW - w), clampedY, NotchDockEdge.Right);
+            return (Math.Max(0, screenW - w - inset), clampedY, NotchDockEdge.Right);
         }
 
         return (clampedX, clampedY, NotchDockEdge.Floating);
@@ -1907,9 +2167,12 @@ public partial class MainWindow : Window
             _lastHoverCheckTicks = nowTicks;
 
             if (DateTime.Today != _calendarDate)
+            {
                 BuildCalendar(DateTime.Today);
+                UpdateClockDisplay(force: true);
+            }
 
-            if (!_inSettings && !_isDragging && PresentationSource.FromVisual(this) is { } src)
+            if (!_hiddenForFullscreen && !_inSettings && !_isDragging && PresentationSource.FromVisual(this) is { } src)
             {
                 GetCursorPos(out var c);
                 var p = src.CompositionTarget.TransformFromDevice.Transform(new Point(c.X, c.Y));
@@ -1947,6 +2210,7 @@ public partial class MainWindow : Window
     private void SetOpen(bool expand)
     {
         _open = expand;
+        ApplyDockCorners(_dockEdge);
         AnimateSize(expand);
         PositionWindowToAnchor(animate: true);
 
@@ -2009,12 +2273,13 @@ public partial class MainWindow : Window
             return;
         }
         var d = TimeSpan.FromMilliseconds(expand ? 360 : 300);
-        bool twoLine = IsMiniTwoLine();
-        Mini.Height = twoLine ? 52 : 34;
-        double artSize = twoLine ? 28 : 20;
+        bool twoLine = IsMiniTwoLine() && !IsIdleClockPillMode;
+        bool compact = _settings.NotchStyle == NotchStyle.Compact;
+        Mini.Height = GetCollapsedHeight();
+        double artSize = twoLine ? (compact ? 24 : 28) : (compact ? 16 : 20);
         MiniArtBox.Width = artSize;
         MiniArtBox.Height = artSize;
-        var artRadius = new CornerRadius(twoLine ? 8 : 6);
+        var artRadius = new CornerRadius(twoLine ? 8 : (compact ? 5 : 6));
         MiniArtBox.CornerRadius = artRadius;
         MiniArtLayer.CornerRadius = artRadius;
         MiniLyricText.Visibility = twoLine ? Visibility.Visible : Visibility.Collapsed;
@@ -2055,9 +2320,16 @@ public partial class MainWindow : Window
             CornerMiniText.Text = _defaultMiniText;
             MiniLyricText.Text = "";
             MiniLyricText.Visibility = Visibility.Collapsed;
+            UpdateMiniViewMode();
             UpdateMiniIndicatorVisibility(false);
+            ApplyNotchBackground();
             SetLyricsColumnVisible(false, animate: true);
-            if (!_open) AnimateSize(false);
+            if (!_open)
+            {
+                ApplyDockCorners(_dockEdge);
+                AnimateSize(false);
+                PositionWindowToAnchor(animate: true);
+            }
             ArtBrush.ImageSource = null;
             MiniArtBrush.ImageSource = null;
             ArtVertBrush.ImageSource = null;
@@ -2155,7 +2427,14 @@ public partial class MainWindow : Window
             CornerMiniProg.AccentColor = _coverAccentColor;
             ApplyNotchBackground();
         }
+        UpdateMiniViewMode();
         UpdateMiniIndicatorVisibility(_media.IsPlaying);
+        if (!_open)
+        {
+            ApplyDockCorners(_dockEdge);
+            AnimateSize(false);
+            PositionWindowToAnchor(animate: true);
+        }
 
         bool showFloating = _settings.ShowLyrics && _settings.LyricsPlacement is LyricsPlacement.Floating or LyricsPlacement.NotchAndFloating;
         if (showFloating && _floatingWindow != null && !_floatingWindow.IsVisible)
@@ -2400,38 +2679,225 @@ public partial class MainWindow : Window
 
     private void Quit(object sender, RoutedEventArgs e) => Application.Current.Shutdown();
 
-    // ---------- Calendar ----------
-    private void BuildCalendar(DateTime today)
+    // ---------- Clock, Idle Pill & Fullscreen Auto-Hide ----------
+    private void UpdateMiniViewMode()
     {
-        _calendarDate = today;
-        PopulateCalendar(today, CalMonthTitle, CalWeekdaysGrid, CalDaysGrid);
-        PopulateCalendar(today, SideCalMonthTitle, SideCalWeekdaysGrid, SideCalDaysGrid);
-        PopulateCalendar(today, CornerCalMonthTitle, CornerCalWeekdaysGrid, CornerCalDaysGrid);
+        bool idleClock = IsIdleClockPillMode;
+        bool compact = _settings.NotchStyle == NotchStyle.Compact;
+        bool pill = IsFloatingPillStyle;
+
+        Mini.Margin = compact
+            ? new Thickness(10, 0, 10, 0)
+            : (pill ? new Thickness(16, 0, 14, 0) : new Thickness(14, 0, 14, 0));
+
+        MiniText.FontSize = compact ? 11.5 : 12.0;
+
+        MiniClockIdleView.Visibility = idleClock ? Visibility.Visible : Visibility.Collapsed;
+        MiniMediaView.Visibility = idleClock ? Visibility.Collapsed : Visibility.Visible;
+
+        MiniIdleDate.Visibility = _settings.ShowMiniDate ? Visibility.Visible : Visibility.Collapsed;
+        MiniIdleTime.FontSize = compact ? 12.5 : (pill ? 15.0 : 14.0);
+        double badgeSize = compact ? 20 : (pill ? 28 : 24);
+        MiniIdleBadge.Width = badgeSize;
+        MiniIdleBadge.Height = badgeSize;
+        MiniIdleBadge.CornerRadius = new CornerRadius(badgeSize / 2.0);
+
+        MiniPlayClock.Visibility = (_settings.ShowClock && HasActiveTrack) ? Visibility.Visible : Visibility.Collapsed;
+        MiniVertClock.Visibility = _settings.ShowClock ? Visibility.Visible : Visibility.Collapsed;
+        CornerMiniClock.Visibility = _settings.ShowClock ? Visibility.Visible : Visibility.Collapsed;
+
+        bool showHeaderClock = _settings.ShowClock && (!_settings.ShowCalendar || _settings.CalendarStyle == CalendarStyle.Classic);
+        FullHeaderClock.Visibility = showHeaderClock ? Visibility.Visible : Visibility.Collapsed;
+        FullVertHeaderClock.Visibility = _settings.ShowClock ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void PopulateCalendar(DateTime today, TextBlock monthTitle, System.Windows.Controls.Primitives.UniformGrid weekdaysGrid, System.Windows.Controls.Primitives.UniformGrid daysGrid)
+    private void OnClockTick()
+    {
+        UpdateClockDisplay(force: false);
+
+        if (DateTime.Today != _calendarDate)
+        {
+            BuildCalendar(DateTime.Today);
+            UpdateClockDisplay(force: true);
+        }
+
+        // Subtle periodic blink on the idle mascot eyes
+        if (!_hiddenForFullscreen && !_open && MiniClockIdleView.Visibility == Visibility.Visible)
+        {
+            long now = DateTime.UtcNow.Ticks;
+            if (now >= _nextMascotBlinkTicks)
+            {
+                _nextMascotBlinkTicks = now + TimeSpan.FromMilliseconds(4800 + (now % 3400)).Ticks;
+                TriggerMascotBlink();
+            }
+        }
+    }
+
+    private void TriggerMascotBlink()
+    {
+        var blink = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(180) };
+        blink.KeyFrames.Add(new LinearDoubleKeyFrame(0.12, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(75))));
+        blink.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180))));
+        MascotBlinkScale.BeginAnimation(ScaleTransform.ScaleYProperty, blink);
+    }
+
+    private (string Dow, string Day, string Month) FormatCompactDateParts(DateTime dt)
     {
         bool en = IsEn;
         var culture = CultureInfo.GetCultureInfo(en ? "en-US" : "ru-RU");
-        monthTitle.Text = today.ToString("MMMM yyyy", culture).ToUpperInvariant();
+        string dow = dt.ToString(en ? "ddd" : "ddd", culture).TrimEnd('.').ToUpperInvariant();
+        string day = dt.ToString("dd", CultureInfo.InvariantCulture);
+        string month = dt.ToString("MMM", culture).TrimEnd('.').ToUpperInvariant();
+        if (month.Length > 3) month = month[..3];
+        return (dow, day, month);
+    }
 
-        weekdaysGrid.Children.Clear();
+    private void UpdateClockDisplay(bool force)
+    {
+        var now = DateTime.Now;
+        string fmt = _settings.ShowClockSeconds ? "HH:mm:ss" : "HH:mm";
+        string timeStr = now.ToString(fmt, CultureInfo.InvariantCulture);
+
+        if (!force && timeStr == _lastClockText) return;
+        _lastClockText = timeStr;
+
+        MiniIdleTime.Text = timeStr;
+        MiniPlayClock.Text = timeStr;
+        MiniVertClock.Text = now.ToString("HH:mm", CultureInfo.InvariantCulture);
+        CornerMiniClock.Text = timeStr;
+        FullHeaderClock.Text = timeStr;
+        FullVertHeaderClock.Text = timeStr;
+
+        foreach (var tb in _calClockBlocks)
+            tb.Text = timeStr;
+
+        var (dow, day, month) = FormatCompactDateParts(now);
+        MiniIdleDow.Text = dow;
+        MiniIdleDay.Text = day;
+        MiniIdleMonth.Text = " " + month;
+    }
+
+    private void CheckFullscreenState()
+    {
+        if (!_settings.HideInFullscreen)
+        {
+            if (_hiddenForFullscreen) SetHiddenForFullscreen(false);
+            return;
+        }
+
+        if (_inSettings || _isDragging || _hwnd == IntPtr.Zero) return;
+
+        bool isFs = FullscreenHelper.IsFullscreenOnSameMonitor(_hwnd);
+        if (isFs != _hiddenForFullscreen)
+            SetHiddenForFullscreen(isFs);
+    }
+
+    private void SetHiddenForFullscreen(bool hide)
+    {
+        _hiddenForFullscreen = hide;
+        if (hide)
+        {
+            if (_open) SetOpen(false);
+            var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(180)) { EasingFunction = SilkyEase };
+            fade.Completed += (_, _) =>
+            {
+                if (_hiddenForFullscreen)
+                    Visibility = Visibility.Hidden;
+            };
+            RootHost.BeginAnimation(OpacityProperty, fade);
+        }
+        else
+        {
+            RootHost.BeginAnimation(OpacityProperty, null);
+            RootHost.Opacity = 0;
+            Visibility = Visibility.Visible;
+            var fade = new DoubleAnimation(1, TimeSpan.FromMilliseconds(220)) { EasingFunction = SilkyEase };
+            RootHost.BeginAnimation(OpacityProperty, fade);
+        }
+    }
+
+    // ---------- Multi-Style Calendar ----------
+    private void BuildCalendar(DateTime today)
+    {
+        _calendarDate = today;
+        _calClockBlocks.Clear();
+        PopulateCalendarHost(today, CalendarPanel, centeredHeader: false);
+        PopulateCalendarHost(today, SideCalendarPanel, centeredHeader: true);
+        PopulateCalendarHost(today, CornerCalendarPanel, centeredHeader: true);
+        UpdateClockDisplay(force: true);
+    }
+
+    private void PopulateCalendarHost(DateTime today, Grid host, bool centeredHeader)
+    {
+        host.Children.Clear();
+        host.RowDefinitions.Clear();
+        host.ColumnDefinitions.Clear();
+
+        switch (_settings.CalendarStyle)
+        {
+            case CalendarStyle.Card:
+                BuildCalendarCard(today, host);
+                break;
+            case CalendarStyle.WeekStrip:
+                BuildCalendarWeekStrip(today, host);
+                break;
+            case CalendarStyle.Minimal:
+                BuildCalendarMinimal(today, host);
+                break;
+            default:
+                BuildCalendarClassic(today, host, centeredHeader);
+                break;
+        }
+    }
+
+    private void BuildCalendarClassic(DateTime today, Grid host, bool centeredHeader)
+    {
+        bool en = IsEn;
+        var culture = CultureInfo.GetCultureInfo(en ? "en-US" : "ru-RU");
+
+        host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var monthTitle = new TextBlock
+        {
+            Text = today.ToString("MMMM yyyy", culture).ToUpperInvariant(),
+            Foreground = new SolidColorBrush(Color.FromRgb(138, 138, 146)),
+            FontSize = 10.5,
+            FontWeight = FontWeights.SemiBold,
+            HorizontalAlignment = centeredHeader ? HorizontalAlignment.Center : HorizontalAlignment.Left,
+            Margin = centeredHeader ? new Thickness(0, 0, 0, 7) : new Thickness(2, 0, 0, 7)
+        };
+        Grid.SetRow(monthTitle, 0);
+        host.Children.Add(monthTitle);
+
+        var weekdaysGrid = new System.Windows.Controls.Primitives.UniformGrid
+        {
+            Columns = 7,
+            Margin = new Thickness(0, 0, 0, 5)
+        };
+        Grid.SetRow(weekdaysGrid, 1);
+
         var days = en
             ? new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" }
             : new[] { "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс" };
 
-        foreach (var d in days)
+        for (int i = 0; i < days.Length; i++)
         {
+            bool isWeekend = en ? (i == 0 || i == 6) : (i >= 5);
             weekdaysGrid.Children.Add(new TextBlock
             {
-                Text = d,
-                Foreground = new SolidColorBrush(Color.FromRgb(99, 99, 102)),
+                Text = days[i],
+                Foreground = new SolidColorBrush(isWeekend ? Color.FromRgb(165, 102, 112) : Color.FromRgb(99, 99, 102)),
                 FontSize = 10,
                 HorizontalAlignment = HorizontalAlignment.Center
             });
         }
+        host.Children.Add(weekdaysGrid);
 
-        daysGrid.Children.Clear();
+        var daysGrid = new System.Windows.Controls.Primitives.UniformGrid { Columns = 7 };
+        Grid.SetRow(daysGrid, 2);
+
         var first = new DateTime(today.Year, today.Month, 1);
         int offset = en ? (int)first.DayOfWeek : ((int)first.DayOfWeek + 6) % 7;
         int daysInMonth = DateTime.DaysInMonth(today.Year, today.Month);
@@ -2442,9 +2908,12 @@ public partial class MainWindow : Window
         for (int day = 1; day <= daysInMonth; day++)
         {
             bool isToday = day == today.Day;
+            int col = (offset + day - 1) % 7;
+            bool isWeekend = en ? (col == 0 || col == 6) : (col >= 5);
+
             if (isToday)
             {
-                var badge = new Border
+                daysGrid.Children.Add(new Border
                 {
                     Width = 21,
                     Height = 21,
@@ -2462,15 +2931,14 @@ public partial class MainWindow : Window
                         HorizontalAlignment = HorizontalAlignment.Center,
                         VerticalAlignment = VerticalAlignment.Center
                     }
-                };
-                daysGrid.Children.Add(badge);
+                });
             }
             else
             {
                 daysGrid.Children.Add(new TextBlock
                 {
                     Text = day.ToString(),
-                    Foreground = new SolidColorBrush(Color.FromRgb(209, 209, 214)),
+                    Foreground = new SolidColorBrush(isWeekend ? Color.FromRgb(165, 165, 175) : Color.FromRgb(209, 209, 214)),
                     FontSize = 11,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
@@ -2478,6 +2946,335 @@ public partial class MainWindow : Window
                 });
             }
         }
+        host.Children.Add(daysGrid);
+    }
+
+    private void BuildCalendarCard(DateTime today, Grid host)
+    {
+        bool en = IsEn;
+        var culture = CultureInfo.GetCultureInfo(en ? "en-US" : "ru-RU");
+        int daysInMonth = DateTime.DaysInMonth(today.Year, today.Month);
+        int weekNum = ISOWeek.GetWeekOfYear(today);
+
+        var card = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(13, 11, 13, 11),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var stack = new StackPanel();
+
+        // Top row: Weekday in iOS coral red + optional live time
+        var topRow = new Grid();
+        topRow.Children.Add(new TextBlock
+        {
+            Text = today.ToString("dddd", culture).ToUpperInvariant(),
+            Foreground = new SolidColorBrush(Color.FromRgb(255, 82, 74)),
+            FontSize = 10.5,
+            FontWeight = FontWeights.Bold,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Left
+        });
+
+        if (_settings.ShowClock)
+        {
+            var clk = new TextBlock
+            {
+                Text = DateTime.Now.ToString(_settings.ShowClockSeconds ? "HH:mm:ss" : "HH:mm", CultureInfo.InvariantCulture),
+                Foreground = new SolidColorBrush(Color.FromRgb(220, 220, 228)),
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            _calClockBlocks.Add(clk);
+            topRow.Children.Add(clk);
+        }
+        stack.Children.Add(topRow);
+
+        // Big editorial day number
+        stack.Children.Add(new TextBlock
+        {
+            Text = today.Day.ToString(),
+            Foreground = Brushes.White,
+            FontSize = 44,
+            FontWeight = FontWeights.Bold,
+            LineHeight = 46,
+            Margin = new Thickness(-1, 2, 0, 2)
+        });
+
+        // Month & year subtitle
+        string monthName = today.ToString("MMMM yyyy", culture);
+        if (monthName.Length > 0)
+            monthName = char.ToUpper(monthName[0], culture) + monthName[1..];
+        stack.Children.Add(new TextBlock
+        {
+            Text = monthName,
+            Foreground = new SolidColorBrush(Color.FromRgb(178, 178, 186)),
+            FontSize = 12,
+            FontWeight = FontWeights.Medium,
+            Margin = new Thickness(0, 0, 0, 10)
+        });
+
+        // Subtle month progress bar
+        double ratio = Math.Clamp((double)today.Day / daysInMonth, 0.05, 1.0);
+        var progHost = new Grid { Height = 3.5, Margin = new Thickness(0, 0, 0, 5) };
+        progHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ratio, GridUnitType.Star) });
+        progHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0.001, 1.0 - ratio), GridUnitType.Star) });
+        progHost.Children.Add(new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)),
+            CornerRadius = new CornerRadius(2)
+        });
+        Grid.SetColumnSpan(progHost.Children[0], 2);
+        var progFill = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(255, 82, 74)),
+            CornerRadius = new CornerRadius(2)
+        };
+        Grid.SetColumn(progFill, 0);
+        progHost.Children.Add(progFill);
+        stack.Children.Add(progHost);
+
+        // Week number + day of month footer
+        var foot = new Grid();
+        foot.Children.Add(new TextBlock
+        {
+            Text = en ? $"Week {weekNum}" : $"Неделя {weekNum}",
+            Foreground = new SolidColorBrush(Color.FromRgb(120, 120, 130)),
+            FontSize = 10,
+            HorizontalAlignment = HorizontalAlignment.Left
+        });
+        foot.Children.Add(new TextBlock
+        {
+            Text = $"{today.Day}/{daysInMonth}",
+            Foreground = new SolidColorBrush(Color.FromRgb(120, 120, 130)),
+            FontSize = 10,
+            HorizontalAlignment = HorizontalAlignment.Right
+        });
+        stack.Children.Add(foot);
+
+        card.Child = stack;
+        host.Children.Add(card);
+    }
+
+    private void BuildCalendarWeekStrip(DateTime today, Grid host)
+    {
+        bool en = IsEn;
+        var culture = CultureInfo.GetCultureInfo(en ? "en-US" : "ru-RU");
+        int daysInMonth = DateTime.DaysInMonth(today.Year, today.Month);
+
+        var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+
+        // Header row: Big date + optional live clock
+        var head = new Grid { Margin = new Thickness(2, 0, 2, 4) };
+        string shortMonth = today.ToString("MMM", culture).TrimEnd('.');
+        if (shortMonth.Length > 0) shortMonth = char.ToUpper(shortMonth[0], culture) + shortMonth[1..];
+        head.Children.Add(new TextBlock
+        {
+            Text = en ? $"{shortMonth} {today.Day}" : $"{today.Day} {shortMonth}",
+            Foreground = Brushes.White,
+            FontSize = 18,
+            FontWeight = FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Left
+        });
+
+        if (_settings.ShowClock)
+        {
+            var clk = new TextBlock
+            {
+                Text = DateTime.Now.ToString(_settings.ShowClockSeconds ? "HH:mm:ss" : "HH:mm", CultureInfo.InvariantCulture),
+                Foreground = new SolidColorBrush(Color.FromRgb(174, 174, 182)),
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 0, 0, 2)
+            };
+            _calClockBlocks.Add(clk);
+            head.Children.Add(clk);
+        }
+        stack.Children.Add(head);
+
+        string dayLabel = today.ToString("dddd", culture);
+        if (dayLabel.Length > 0) dayLabel = char.ToUpper(dayLabel[0], culture) + dayLabel[1..];
+        stack.Children.Add(new TextBlock
+        {
+            Text = $"{dayLabel} · {today.Year}",
+            Foreground = new SolidColorBrush(Color.FromRgb(132, 132, 140)),
+            FontSize = 11,
+            Margin = new Thickness(2, 0, 2, 12)
+        });
+
+        // 7-day horizontal strip for the current week
+        var strip = new System.Windows.Controls.Primitives.UniformGrid { Columns = 7, Margin = new Thickness(0, 0, 0, 12) };
+        int startOffset = en ? (int)today.DayOfWeek : ((int)today.DayOfWeek + 6) % 7;
+        var weekStart = today.AddDays(-startOffset);
+
+        for (int i = 0; i < 7; i++)
+        {
+            var d = weekStart.AddDays(i);
+            bool isToday = d.Date == today.Date;
+            bool isPast = d.Date < today.Date;
+            string dow = d.ToString("ddd", culture).TrimEnd('.');
+            if (dow.Length > 2) dow = dow[..2];
+
+            var colStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+            colStack.Children.Add(new TextBlock
+            {
+                Text = dow.ToUpperInvariant(),
+                Foreground = isToday
+                    ? Brushes.Black
+                    : new SolidColorBrush(isPast ? Color.FromRgb(90, 90, 98) : Color.FromRgb(142, 142, 150)),
+                FontSize = 8.5,
+                FontWeight = isToday ? FontWeights.Bold : FontWeights.Medium,
+                HorizontalAlignment = HorizontalAlignment.Center
+            });
+            colStack.Children.Add(new TextBlock
+            {
+                Text = d.Day.ToString(),
+                Foreground = isToday
+                    ? Brushes.Black
+                    : new SolidColorBrush(isPast ? Color.FromRgb(125, 125, 134) : Color.FromRgb(230, 230, 236)),
+                FontSize = 12,
+                FontWeight = isToday ? FontWeights.Bold : FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 3, 0, 0)
+            });
+
+            strip.Children.Add(new Border
+            {
+                Background = isToday ? Brushes.White : new SolidColorBrush(Color.FromArgb(18, 255, 255, 255)),
+                CornerRadius = new CornerRadius(9),
+                Padding = new Thickness(2, 6, 2, 6),
+                Margin = new Thickness(1.5, 0, 1.5, 0),
+                Child = colStack
+            });
+        }
+        stack.Children.Add(strip);
+
+        // Month progress footer
+        int daysLeft = Math.Max(0, daysInMonth - today.Day);
+        double ratio = Math.Clamp((double)today.Day / daysInMonth, 0.05, 1.0);
+        var progHost = new Grid { Height = 3, Margin = new Thickness(2, 0, 2, 5) };
+        progHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ratio, GridUnitType.Star) });
+        progHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0.001, 1.0 - ratio), GridUnitType.Star) });
+        progHost.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(35, 255, 255, 255)), CornerRadius = new CornerRadius(1.5) });
+        Grid.SetColumnSpan(progHost.Children[0], 2);
+        var fill = new Border { Background = Brushes.White, CornerRadius = new CornerRadius(1.5) };
+        Grid.SetColumn(fill, 0);
+        progHost.Children.Add(fill);
+        stack.Children.Add(progHost);
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = en
+                ? (daysLeft == 0 ? "Last day of month" : $"{daysLeft}d left in month")
+                : (daysLeft == 0 ? "Последний день месяца" : $"До конца месяца: {daysLeft} дн."),
+            Foreground = new SolidColorBrush(Color.FromRgb(115, 115, 124)),
+            FontSize = 10,
+            Margin = new Thickness(2, 0, 2, 0)
+        });
+
+        host.Children.Add(stack);
+    }
+
+    private void BuildCalendarMinimal(DateTime today, Grid host)
+    {
+        bool en = IsEn;
+        var (dow, day, month) = FormatCompactDateParts(today);
+        int weekNum = ISOWeek.GetWeekOfYear(today);
+
+        var stack = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        // Hero element: live clock when ShowClock is on, otherwise large clean day number
+        if (_settings.ShowClock)
+        {
+            var heroClock = new TextBlock
+            {
+                Text = DateTime.Now.ToString(_settings.ShowClockSeconds ? "HH:mm:ss" : "HH:mm", CultureInfo.InvariantCulture),
+                Foreground = Brushes.White,
+                FontSize = _settings.ShowClockSeconds ? 28 : 34,
+                FontWeight = FontWeights.Light,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            _calClockBlocks.Add(heroClock);
+            stack.Children.Add(heroClock);
+        }
+        else
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = today.ToString("yyyy", CultureInfo.InvariantCulture),
+                Foreground = new SolidColorBrush(Color.FromRgb(115, 115, 124)),
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 6)
+            });
+        }
+
+        // Screenshot-inspired inline date capsule: "FRI · 27 NOV"
+        var dateTb = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center };
+        dateTb.Inlines.Add(new System.Windows.Documents.Run(dow) { Foreground = new SolidColorBrush(Color.FromRgb(142, 142, 147)), FontSize = 11.5, FontWeight = FontWeights.Medium });
+        dateTb.Inlines.Add(new System.Windows.Documents.Run(" · ") { Foreground = new SolidColorBrush(Color.FromRgb(90, 90, 96)), FontSize = 11.5 });
+        dateTb.Inlines.Add(new System.Windows.Documents.Run(day) { Foreground = Brushes.White, FontSize = 15, FontWeight = FontWeights.SemiBold });
+        dateTb.Inlines.Add(new System.Windows.Documents.Run(" " + month) { Foreground = new SolidColorBrush(Color.FromRgb(174, 174, 178)), FontSize = 12, FontWeight = FontWeights.Medium });
+
+        stack.Children.Add(new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(24, 255, 255, 255)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(28, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(12, 5, 12, 5),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Child = dateTb
+        });
+
+        // Minimal 7-day dot progress indicator
+        int dayIdx = en ? (int)today.DayOfWeek : ((int)today.DayOfWeek + 6) % 7;
+        var dots = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 14, 0, 6)
+        };
+        for (int i = 0; i < 7; i++)
+        {
+            bool isToday = i == dayIdx;
+            bool isPast = i < dayIdx;
+            dots.Children.Add(new Border
+            {
+                Width = isToday ? 16 : 5,
+                Height = 5,
+                CornerRadius = new CornerRadius(2.5),
+                Margin = new Thickness(2.5, 0, 2.5, 0),
+                Background = isToday
+                    ? Brushes.White
+                    : new SolidColorBrush(isPast ? Color.FromArgb(115, 255, 255, 255) : Color.FromArgb(42, 255, 255, 255))
+            });
+        }
+        stack.Children.Add(dots);
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = en ? $"W{weekNum} · {today.Year}" : $"Нед. {weekNum} · {today.Year}",
+            Foreground = new SolidColorBrush(Color.FromRgb(108, 108, 118)),
+            FontSize = 10,
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+
+        host.Children.Add(stack);
     }
 
     // ---------- Clipboard History ----------

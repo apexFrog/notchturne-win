@@ -99,85 +99,148 @@
     </Style>
   </Window.Resources>
 
-  <Grid>
-  <Border x:Name="NotchShell" Background="#FF000000" CornerRadius="0,0,26,26"
-          BorderBrush="#1AFFFFFF" BorderThickness="1,0,1,1"
-          HorizontalAlignment="Center" VerticalAlignment="Top"
-          Width="250" Height="34" ClipToBounds="True"
-          MouseLeftButtonDown="NotchShell_MouseLeftButtonDown"
-          MouseMove="NotchShell_MouseMove"
-          MouseLeftButtonUp="NotchShell_MouseLeftButtonUp"
-          LostMouseCapture="NotchShell_LostMouseCapture">
-    <Border.ContextMenu>
-      <ContextMenu>
-        <MenuItem x:Name="CtxSettings" Header="Настройки…" Click="OpenSettings"/>
-        <MenuItem x:Name="CtxCycleMode" Header="Сменить режим текста" Click="CycleLyricsMode"/>
-        <MenuItem x:Name="CtxResetPos" Header="Сбросить позицию (вверх по центру)" Click="ResetNotchPosition"/>
-        <Separator/>
-        <MenuItem x:Name="CtxQuit" Header="Выход" Click="Quit"/>
-      </ContextMenu>
-    </Border.ContextMenu>
+  <Grid x:Name="RootHost">
+  <Grid x:Name="NotchGroup" HorizontalAlignment="Center" VerticalAlignment="Top">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="Auto"/>
+      <ColumnDefinition Width="Auto"/>
+      <ColumnDefinition Width="Auto"/>
+    </Grid.ColumnDefinitions>
 
-    <Grid>
-      <!-- Ambient Cover / Glass Glow & Shimmer Layers (clipped via exact PathGeometry, zero VisualBrush offset) -->
-      <Grid x:Name="NotchBgContainer" IsHitTestVisible="False" SizeChanged="NotchBgContainer_SizeChanged">
-        <Border x:Name="NotchGlowLayer" IsHitTestVisible="False" Visibility="Collapsed"/>
-        <controls:CoverShimmerLayer x:Name="NotchShimmer" IsHitTestVisible="False" Visibility="Collapsed"/>
-      </Grid>
+    <!-- Concave MacBook-style left ear (shown in MacNotch style when docked Top/Bottom) -->
+    <Path x:Name="NotchEarLeft" Grid.Column="0" Width="14" Height="14" VerticalAlignment="Top"
+          Fill="#FF000000" Data="M 0,0 L 14,0 L 14,14 A 14,14 0 0 0 0,0 Z"
+          Visibility="Collapsed" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
+      <Path.RenderTransform>
+        <ScaleTransform x:Name="NotchEarLeftFlip" ScaleY="1"/>
+      </Path.RenderTransform>
+    </Path>
 
-      <!-- Collapsed Mini Bar -->
-      <Grid x:Name="Mini" Margin="14,0" VerticalAlignment="Center" Height="34">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="Auto"/>
-          <ColumnDefinition Width="*"/>
-          <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
-        <Border x:Name="MiniArtBox" Width="20" Height="20" CornerRadius="6" Background="#1C1C20" Margin="0,0,9,0" VerticalAlignment="Center">
-          <Border x:Name="MiniArtLayer" CornerRadius="6" RenderOptions.BitmapScalingMode="HighQuality">
-            <Border.Background>
-              <ImageBrush x:Name="MiniArtBrush" Stretch="UniformToFill"/>
-            </Border.Background>
-          </Border>
-        </Border>
-        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-          <TextBlock x:Name="MiniText" Foreground="#F2F2F7" FontSize="12" FontWeight="Medium"
-                     TextTrimming="CharacterEllipsis" Text="Ничего не играет"/>
-          <TextBlock x:Name="MiniLyricText" Foreground="#B8B8C2" FontSize="11.5" FontWeight="Normal"
-                     TextTrimming="CharacterEllipsis" Margin="0,1,0,0" Visibility="Collapsed"/>
-        </StackPanel>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
-          <controls:MiniVisualizer x:Name="MiniViz" Width="18" Height="16" VerticalAlignment="Center"/>
-          <Ellipse x:Name="MiniDot" Width="6" Height="6" Fill="#1DB954"
-                   VerticalAlignment="Center" Visibility="Collapsed"/>
-        </StackPanel>
-      </Grid>
+    <Border x:Name="NotchShell" Grid.Column="1" Background="#FF000000" CornerRadius="0,0,26,26"
+            BorderBrush="#1AFFFFFF" BorderThickness="1,0,1,1"
+            HorizontalAlignment="Center" VerticalAlignment="Top"
+            Width="250" Height="34" ClipToBounds="True"
+            MouseLeftButtonDown="NotchShell_MouseLeftButtonDown"
+            MouseMove="NotchShell_MouseMove"
+            MouseLeftButtonUp="NotchShell_MouseLeftButtonUp"
+            LostMouseCapture="NotchShell_LostMouseCapture">
+      <Border.ContextMenu>
+        <ContextMenu>
+          <MenuItem x:Name="CtxSettings" Header="Настройки…" Click="OpenSettings"/>
+          <MenuItem x:Name="CtxCycleStyle" Header="Сменить вид облака" Click="CycleNotchStyle"/>
+          <MenuItem x:Name="CtxCycleMode" Header="Сменить режим текста" Click="CycleLyricsMode"/>
+          <MenuItem x:Name="CtxResetPos" Header="Сбросить позицию (вверх по центру)" Click="ResetNotchPosition"/>
+          <Separator/>
+          <MenuItem x:Name="CtxQuit" Header="Выход" Click="Quit"/>
+        </ContextMenu>
+      </Border.ContextMenu>
 
-      <!-- Collapsed Vertical Side Pill (Beta: when snapped to Left or Right edge) -->
-      <Grid x:Name="MiniVertical" Margin="0,14" HorizontalAlignment="Center" VerticalAlignment="Stretch" Visibility="Collapsed">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto"/>
-          <RowDefinition Height="*"/>
-          <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
-
-        <Border x:Name="MiniVertArtBox" Grid.Row="0" Width="34" Height="34" CornerRadius="10" Background="#1C1C20" HorizontalAlignment="Center">
-          <Border x:Name="MiniVertArtLayer" CornerRadius="10" RenderOptions.BitmapScalingMode="HighQuality">
-            <Border.Background>
-              <ImageBrush x:Name="MiniVertArtBrush" Stretch="UniformToFill"/>
-            </Border.Background>
-            <Border CornerRadius="10" BorderBrush="#26FFFFFF" BorderThickness="1" IsHitTestVisible="False"/>
-          </Border>
-        </Border>
-
-        <!-- Multi-style compact progress/timer indicator -->
-        <controls:SideProgressIndicator x:Name="SideProgInd" Grid.Row="1" Width="46" Height="64"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
-
-        <Grid Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center">
-          <controls:MiniVisualizer x:Name="MiniVizVert" Width="20" Height="16" HorizontalAlignment="Center"/>
-          <Ellipse x:Name="MiniDotVert" Width="7" Height="7" Fill="#1DB954" HorizontalAlignment="Center" Visibility="Collapsed"/>
+      <Grid>
+        <!-- Ambient Cover / Glass Glow & Shimmer Layers (clipped via exact PathGeometry, zero VisualBrush offset) -->
+        <Grid x:Name="NotchBgContainer" IsHitTestVisible="False" SizeChanged="NotchBgContainer_SizeChanged">
+          <Border x:Name="NotchGlowLayer" IsHitTestVisible="False" Visibility="Collapsed"/>
+          <controls:CoverShimmerLayer x:Name="NotchShimmer" IsHitTestVisible="False" Visibility="Collapsed"/>
+          <Border x:Name="NotchNeonRim" IsHitTestVisible="False" Visibility="Collapsed" BorderThickness="1.5" Margin="0.5"/>
         </Grid>
-      </Grid>
+
+        <!-- Collapsed Mini Bar (switches cleanly between Media mode and Clock+Date idle pill) -->
+        <Grid x:Name="Mini" Margin="14,0" VerticalAlignment="Center" Height="34">
+          <!-- Media Playing / Default Mini View -->
+          <Grid x:Name="MiniMediaView">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Border x:Name="MiniArtBox" Width="20" Height="20" CornerRadius="6" Background="#1C1C20" Margin="0,0,9,0" VerticalAlignment="Center">
+              <Border x:Name="MiniArtLayer" CornerRadius="6" RenderOptions.BitmapScalingMode="HighQuality">
+                <Border.Background>
+                  <ImageBrush x:Name="MiniArtBrush" Stretch="UniformToFill"/>
+                </Border.Background>
+              </Border>
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+              <TextBlock x:Name="MiniText" Foreground="#F2F2F7" FontSize="12" FontWeight="Medium"
+                         TextTrimming="CharacterEllipsis" Text="Ничего не играет"/>
+              <TextBlock x:Name="MiniLyricText" Foreground="#B8B8C2" FontSize="11.5" FontWeight="Normal"
+                         TextTrimming="CharacterEllipsis" Margin="0,1,0,0" Visibility="Collapsed"/>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+              <TextBlock x:Name="MiniPlayClock" Text="21:58" Foreground="#9A9AA4" FontSize="11.5" FontWeight="Medium"
+                         VerticalAlignment="Center" Margin="0,0,8,0" Visibility="Collapsed"/>
+              <controls:MiniVisualizer x:Name="MiniViz" Width="18" Height="16" VerticalAlignment="Center"/>
+              <Ellipse x:Name="MiniDot" Width="6" Height="6" Fill="#1DB954"
+                       VerticalAlignment="Center" Visibility="Collapsed"/>
+            </StackPanel>
+          </Grid>
+
+          <!-- Idle Clock + Date + Mascot Pill View (inspired by Dynamic Pill screenshot) -->
+          <Grid x:Name="MiniClockIdleView" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="MiniIdleTime" Grid.Column="0" Text="21:58" Foreground="#F2F2F7"
+                       FontSize="14.5" FontWeight="Normal" VerticalAlignment="Center" Margin="2,0,10,0"/>
+
+            <TextBlock x:Name="MiniIdleDate" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+              <Run x:Name="MiniIdleDow" Text="WED" Foreground="#8E8E93" FontSize="11" FontWeight="Medium"/>
+              <Run Text=" · " Foreground="#5A5A60" FontSize="11"/>
+              <Run x:Name="MiniIdleDay" Text="04" Foreground="#FFFFFF" FontSize="14.5" FontWeight="SemiBold"/>
+              <Run x:Name="MiniIdleMonth" Text=" NOV" Foreground="#AEAEB2" FontSize="11.5" FontWeight="Medium"/>
+            </TextBlock>
+
+            <Border x:Name="MiniIdleBadge" Grid.Column="2" Width="26" Height="26" CornerRadius="13"
+                    Background="#25272F" BorderBrush="#48FFFFFF" BorderThickness="1.2"
+                    VerticalAlignment="Center" Margin="10,0,-4,0">
+              <Grid RenderTransformOrigin="0.5,0.5" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid.RenderTransform>
+                  <TransformGroup>
+                    <ScaleTransform x:Name="MascotBlinkScale" ScaleX="1" ScaleY="1"/>
+                    <RotateTransform Angle="-11"/>
+                  </TransformGroup>
+                </Grid.RenderTransform>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0">
+                  <Border Width="4.2" Height="8.2" CornerRadius="2.1" Background="White" Margin="0,0,3.2,0"/>
+                  <Border Width="4.2" Height="8.2" CornerRadius="2.1" Background="White"/>
+                </StackPanel>
+              </Grid>
+            </Border>
+          </Grid>
+        </Grid>
+
+        <!-- Collapsed Vertical Side Pill (Beta: when snapped to Left or Right edge) -->
+        <Grid x:Name="MiniVertical" Margin="0,12" HorizontalAlignment="Center" VerticalAlignment="Stretch" Visibility="Collapsed">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+
+          <Border x:Name="MiniVertArtBox" Grid.Row="0" Width="34" Height="34" CornerRadius="10" Background="#1C1C20" HorizontalAlignment="Center">
+            <Border x:Name="MiniVertArtLayer" CornerRadius="10" RenderOptions.BitmapScalingMode="HighQuality">
+              <Border.Background>
+                <ImageBrush x:Name="MiniVertArtBrush" Stretch="UniformToFill"/>
+              </Border.Background>
+              <Border CornerRadius="10" BorderBrush="#26FFFFFF" BorderThickness="1" IsHitTestVisible="False"/>
+            </Border>
+          </Border>
+
+          <TextBlock x:Name="MiniVertClock" Grid.Row="1" Text="21:58" Foreground="#EAEAEF" FontSize="10.5" FontWeight="SemiBold"
+                     HorizontalAlignment="Center" Margin="0,6,0,0" Visibility="Collapsed"/>
+
+          <!-- Multi-style compact progress/timer indicator -->
+          <controls:SideProgressIndicator x:Name="SideProgInd" Grid.Row="2" Width="46" Height="64"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+          <Grid Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <controls:MiniVisualizer x:Name="MiniVizVert" Width="20" Height="16" HorizontalAlignment="Center"/>
+            <Ellipse x:Name="MiniDotVert" Width="7" Height="7" Fill="#1DB954" HorizontalAlignment="Center" Visibility="Collapsed"/>
+          </Grid>
+        </Grid>
 
       <!-- Expanded Vertical Side Panel (Beta: when snapped to Left or Right edge) -->
       <Grid x:Name="FullVertical" Margin="20,18,20,18" Opacity="0" IsHitTestVisible="False" Visibility="Collapsed" RenderTransformOrigin="0.5,0.5">
@@ -185,7 +248,10 @@
           <ScaleTransform x:Name="FullVertScale" ScaleX="0.97" ScaleY="0.97"/>
         </Grid.RenderTransform>
 
-        <!-- Settings Gear top-right -->
+        <!-- Optional Header Clock & Settings Gear top-right -->
+        <TextBlock x:Name="FullVertHeaderClock" Text="21:58" Foreground="#8E8E93" FontSize="11.5" FontWeight="SemiBold"
+                   HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-2,-4,0,0"
+                   IsHitTestVisible="False" Visibility="Collapsed" Panel.ZIndex="10"/>
         <Button Style="{StaticResource IconBtn}" HorizontalAlignment="Right" VerticalAlignment="Top"
                 Margin="0,-8,-8,0" Padding="5" ToolTip="Настройки" Click="OpenSettings" Panel.ZIndex="10">
           <Path Data="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"
@@ -292,17 +358,7 @@
           <Grid x:Name="SideBottomContent" Grid.Row="2">
             <controls:LyricsView x:Name="SideLyrics" VerticalAlignment="Stretch"/>
 
-            <Grid x:Name="SideCalendarPanel" VerticalAlignment="Center" Visibility="Collapsed" Margin="8,0">
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-              </Grid.RowDefinitions>
-              <TextBlock x:Name="SideCalMonthTitle" Text="NOVEMBER 2026" Foreground="#8E8E93" FontSize="11"
-                         FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,8"/>
-              <UniformGrid x:Name="SideCalWeekdaysGrid" Grid.Row="1" Columns="7" Margin="0,0,0,6"/>
-              <UniformGrid x:Name="SideCalDaysGrid" Grid.Row="2" Columns="7"/>
-            </Grid>
+            <Grid x:Name="SideCalendarPanel" VerticalAlignment="Center" Visibility="Collapsed" Margin="8,0"/>
 
             <Grid x:Name="SideClipboardPanel" VerticalAlignment="Stretch" Visibility="Collapsed">
               <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
@@ -318,7 +374,10 @@
         <Grid.RenderTransform>
           <ScaleTransform x:Name="FullScale" ScaleX="0.97" ScaleY="0.97"/>
         </Grid.RenderTransform>
-        <!-- Settings Gear top-right -->
+        <!-- Optional Header Clock & Settings Gear top-right -->
+        <TextBlock x:Name="FullHeaderClock" Text="21:58" Foreground="#8E8E93" FontSize="11.5" FontWeight="SemiBold"
+                   HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,22,0"
+                   IsHitTestVisible="False" Visibility="Collapsed" Panel.ZIndex="10"/>
         <Button Style="{StaticResource IconBtn}" HorizontalAlignment="Right" VerticalAlignment="Top"
                 Margin="0,-8,-8,0" Padding="5" ToolTip="Настройки" Click="OpenSettings" Panel.ZIndex="10">
           <Path Data="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"
@@ -443,18 +502,8 @@
           <!-- Divider 2 -->
           <Border x:Name="DivCal" Grid.Column="3" Width="1" Background="#1E1E22" Margin="14,10,16,10"/>
 
-          <!-- Column 3: Calendar -->
-          <Grid x:Name="CalendarPanel" Grid.Column="4" VerticalAlignment="Center">
-            <Grid.RowDefinitions>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-            <TextBlock x:Name="CalMonthTitle" Text="NOVEMBER 2026" Foreground="#7A7A80" FontSize="10.5"
-                       FontWeight="SemiBold" Margin="2,0,0,7"/>
-            <UniformGrid x:Name="CalWeekdaysGrid" Grid.Row="1" Columns="7" Margin="0,0,0,5"/>
-            <UniformGrid x:Name="CalDaysGrid" Grid.Row="2" Columns="7"/>
-          </Grid>
+          <!-- Column 3: Calendar (multi-style host) -->
+          <Grid x:Name="CalendarPanel" Grid.Column="4" VerticalAlignment="Center"/>
 
           <!-- Divider 3 -->
           <Border x:Name="DivClip" Grid.Column="5" Width="1" Background="#1E1E22" Margin="14,10,16,10"/>
@@ -497,6 +546,41 @@
             </Grid>
             <Border Style="{StaticResource SettingSep}"/>
 
+            <Grid x:Name="CalStyleRow">
+              <TextBlock x:Name="LblCalStyle" Text="Стиль календаря" Style="{StaticResource SettingRowLabel}"/>
+              <WrapPanel HorizontalAlignment="Right" MaxWidth="310">
+                <Button x:Name="BtnCalClassic" Content="Сетка" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnCalClassic"/>
+                <Button x:Name="BtnCalCard" Content="Карточка" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnCalCard"/>
+                <Button x:Name="BtnCalWeek" Content="Неделя" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnCalWeek"/>
+                <Button x:Name="BtnCalMinimal" Content="Минимал" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnCalMinimal"/>
+              </WrapPanel>
+            </Grid>
+            <Border x:Name="CalStyleSep" Style="{StaticResource SettingSep}"/>
+
+            <Grid>
+              <TextBlock x:Name="LblShowClock" Text="Показывать время" Style="{StaticResource SettingRowLabel}"/>
+              <CheckBox x:Name="SwShowClock" Style="{StaticResource IosSwitch}" HorizontalAlignment="Right" Click="OnInlineToggle"/>
+            </Grid>
+            <Border Style="{StaticResource SettingSep}"/>
+
+            <Grid x:Name="ClockSecRow">
+              <TextBlock x:Name="LblClockSeconds" Text="Секунды на часах" Style="{StaticResource SettingRowLabel}"/>
+              <CheckBox x:Name="SwClockSeconds" Style="{StaticResource IosSwitch}" HorizontalAlignment="Right" Click="OnInlineToggle"/>
+            </Grid>
+            <Border x:Name="ClockSecSep" Style="{StaticResource SettingSep}"/>
+
+            <Grid x:Name="MiniDateRow">
+              <TextBlock x:Name="LblMiniDate" Text="Дата в свёрнутом облаке" Style="{StaticResource SettingRowLabel}"/>
+              <CheckBox x:Name="SwMiniDate" Style="{StaticResource IosSwitch}" HorizontalAlignment="Right" Click="OnInlineToggle"/>
+            </Grid>
+            <Border x:Name="MiniDateSep" Style="{StaticResource SettingSep}"/>
+
+            <Grid>
+              <TextBlock x:Name="LblHideFullscreen" Text="Скрывать в полном экране" Style="{StaticResource SettingRowLabel}"/>
+              <CheckBox x:Name="SwHideFullscreen" Style="{StaticResource IosSwitch}" HorizontalAlignment="Right" Click="OnInlineToggle"/>
+            </Grid>
+            <Border Style="{StaticResource SettingSep}"/>
+
             <Grid>
               <TextBlock x:Name="LblShowClip" Text="Буфер обмена" Style="{StaticResource SettingRowLabel}"/>
               <CheckBox x:Name="SwClipboard" Style="{StaticResource IosSwitch}" HorizontalAlignment="Right" Click="OnInlineToggle"/>
@@ -528,6 +612,18 @@
                 <Button x:Name="BtnLangRu" Content="Рус" Style="{StaticResource SegPill}" Margin="0,0,6,0" Click="OnLangRu"/>
                 <Button x:Name="BtnLangEn" Content="Eng" Style="{StaticResource SegPill}" Click="OnLangEn"/>
               </StackPanel>
+            </Grid>
+            <Border Style="{StaticResource SettingSep}"/>
+
+            <Grid>
+              <TextBlock x:Name="LblNotchStyle" Text="Вид облака" Style="{StaticResource SettingRowLabel}"/>
+              <WrapPanel HorizontalAlignment="Right" MaxWidth="310">
+                <Button x:Name="BtnStyleNotch" Content="Вырез" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnStyleNotch"/>
+                <Button x:Name="BtnStylePill" Content="Капсула" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnStylePill"/>
+                <Button x:Name="BtnStyleMac" Content="MacBook" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnStyleMac"/>
+                <Button x:Name="BtnStyleCompact" Content="Компакт" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnStyleCompact"/>
+                <Button x:Name="BtnStyleGlow" Content="Неон" Style="{StaticResource SegPill}" Padding="8,4" Margin="4,0,0,4" Click="OnStyleGlow"/>
+              </WrapPanel>
             </Grid>
             <Border Style="{StaticResource SettingSep}"/>
 
@@ -729,7 +825,17 @@
         </ScrollViewer>
       </Grid>
     </Grid>
-  </Border>
+    </Border>
+
+    <!-- Concave MacBook-style right ear (shown in MacNotch style when docked Top/Bottom) -->
+    <Path x:Name="NotchEarRight" Grid.Column="2" Width="14" Height="14" VerticalAlignment="Top"
+          Fill="#FF000000" Data="M 0,0 L 14,0 A 14,14 0 0 0 0,14 Z"
+          Visibility="Collapsed" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
+      <Path.RenderTransform>
+        <ScaleTransform x:Name="NotchEarRightFlip" ScaleY="1"/>
+      </Path.RenderTransform>
+    </Path>
+  </Grid>
 
   <!-- Corner-Wrap L-Shaped Dynamic Island (Beta: bends seamlessly around screen corners!) -->
   <Grid x:Name="CornerShell" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Top"
@@ -741,6 +847,7 @@
     <Grid.ContextMenu>
       <ContextMenu>
         <MenuItem x:Name="CtxCornerSettings" Header="Настройки…" Click="OpenSettings"/>
+        <MenuItem x:Name="CtxCornerCycleStyle" Header="Сменить вид облака" Click="CycleNotchStyle"/>
         <MenuItem x:Name="CtxCornerCycleMode" Header="Сменить режим текста" Click="CycleLyricsMode"/>
         <MenuItem x:Name="CtxCornerResetPos" Header="Сбросить позицию (вверх по центру)" Click="ResetNotchPosition"/>
         <Separator/>
@@ -759,12 +866,13 @@
 
     <!-- Interactive content canvas positioned dynamically into horizontal & vertical arms -->
     <Canvas x:Name="CornerContentCanvas">
-      <!-- Collapsed: Horizontal Arm (Cover + Title) -->
+      <!-- Collapsed: Horizontal Arm (Cover + Title + Optional Clock) -->
       <Grid x:Name="CornerMiniHoriz" Width="260" Height="42">
         <Grid Margin="12,0">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           <Border Width="24" Height="24" CornerRadius="7" Background="#1C1C20" Margin="0,0,9,0" VerticalAlignment="Center">
             <Border CornerRadius="7" RenderOptions.BitmapScalingMode="HighQuality">
@@ -775,6 +883,8 @@
           </Border>
           <TextBlock x:Name="CornerMiniText" Grid.Column="1" Foreground="#F2F2F7" FontSize="12" FontWeight="Medium"
                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="Ничего не играет"/>
+          <TextBlock x:Name="CornerMiniClock" Grid.Column="2" Text="21:58" Foreground="#9A9AA4" FontSize="11.5" FontWeight="SemiBold"
+                     VerticalAlignment="Center" Margin="8,0,0,0" Visibility="Collapsed"/>
         </Grid>
       </Grid>
 
@@ -907,17 +1017,7 @@
           </StackPanel>
           <Grid Grid.Row="2">
             <controls:LyricsView x:Name="CornerLyrics" VerticalAlignment="Stretch"/>
-            <Grid x:Name="CornerCalendarPanel" VerticalAlignment="Center" Visibility="Collapsed" Margin="4,0">
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-              </Grid.RowDefinitions>
-              <TextBlock x:Name="CornerCalMonthTitle" Text="NOVEMBER 2026" Foreground="#8E8E93" FontSize="10.5"
-                         FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,7"/>
-              <UniformGrid x:Name="CornerCalWeekdaysGrid" Grid.Row="1" Columns="7" Margin="0,0,0,5"/>
-              <UniformGrid x:Name="CornerCalDaysGrid" Grid.Row="2" Columns="7"/>
-            </Grid>
+            <Grid x:Name="CornerCalendarPanel" VerticalAlignment="Center" Visibility="Collapsed" Margin="4,0"/>
             <Grid x:Name="CornerClipboardPanel" VerticalAlignment="Stretch" Visibility="Collapsed">
               <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel x:Name="CornerClipList"/>

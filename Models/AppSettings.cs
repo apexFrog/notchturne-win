@@ -79,6 +79,23 @@ public enum CoverShimmerStyle
     SpotifyMesh
 }
 
+public enum NotchStyle
+{
+    Notch,
+    DynamicPill,
+    MacNotch,
+    Compact,
+    Glow
+}
+
+public enum CalendarStyle
+{
+    Classic,
+    Card,
+    WeekStrip,
+    Minimal
+}
+
 public class AppSettings
 {
     public bool ShowLyrics { get; set; } = true;
@@ -89,10 +106,17 @@ public class AppSettings
     public MiniLyricsStyle MiniLyricsStyle { get; set; } = MiniLyricsStyle.BelowTitle;
     public double LyricsOffsetSeconds { get; set; } = 0.2;
 
+    public NotchStyle NotchStyle { get; set; } = NotchStyle.Notch;
     public NotchBackgroundMode NotchBackground { get; set; } = NotchBackgroundMode.Black;
     public bool CoverShimmerEnabled { get; set; } = true;
     public CoverShimmerStyle CoverShimmerStyle { get; set; } = CoverShimmerStyle.Aurora;
     public VisualizerStyle VisualizerStyle { get; set; } = VisualizerStyle.Bars;
+
+    public bool ShowClock { get; set; } = true;
+    public bool ShowClockSeconds { get; set; } = false;
+    public bool ShowMiniDate { get; set; } = true;
+    public bool HideInFullscreen { get; set; } = true;
+    public CalendarStyle CalendarStyle { get; set; } = CalendarStyle.Classic;
 
     public NotchDockEdge DockEdge { get; set; } = NotchDockEdge.Top;
     public double? NotchCustomX { get; set; }
